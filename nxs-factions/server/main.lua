@@ -1,4 +1,3 @@
-
 local jsn = LoadResourceFile(GetCurrentResourceName(), 'config/data.json')
 local dcd = json.decode(jsn)
 CreateThread(function()
@@ -93,18 +92,3 @@ CheckPerms = function(source)
     end
     xPlayer.showNotification(locale('perms'))
 end
-
-AddEventHandler('onResourceStart', function(resourceName)
-    
-    local function printa()
-        while true do
-            print('^1Resource Name needs to be: ^5nxs-factions')
-            Citizen.Wait(300)
-        end
-    end
-    if (GetCurrentResourceName() ~= 'nxs-factions') then
-        printa()
-        return
-    end
-    print('^5The resource ' .. resourceName .. ' has been successfully started.^0')
-end)
