@@ -34,20 +34,89 @@ Config = {
     AdminGroups = {
         'jaankeza',
         'developer'
-    }
+    },
 
+    -- WARDROBE CONFIGURATION
+    -- Choose your wardrobe system: 'esx_skin', 'illenium-appearance', 'fivem-appearance', or 'custom'
+    WardrobeSystem = 'illenium-appearance',
+
+    -- BOSS MENU CONFIGURATION  
+    -- Choose your boss menu system: 'esx_society', 'qb-management', or 'custom'
+    BossMenuSystem = 'esx_society',
 }
 
-YourBossmenuFunc = function(job)
-    print('Bossmenu: '..job)
-    -- HERE YOU HAVE TO PUT YOUR BOSSMENU TRIGGER  --
-end
-
+-- WARDROBE FUNCTION
 YourWardRobeFunc = function(job)
-    print('Camerino: '..job)
-    -- HERE YOU HAVE TO PUT YOUR BOSSMENU TRIGGER  --
+    if Config.WardrobeSystem == 'esx_skin' then
+        -- ESX Skin / Skinchanger
+        TriggerEvent('esx_skin:openSaveableMenu')
+        
+    elseif Config.WardrobeSystem == 'illenium-appearance' then
+        -- Illenium Appearance
+        exports['illenium-appearance']:openWardrobe()
+        
+    elseif Config.WardrobeSystem == 'fivem-appearance' then
+        -- Fivem Appearance
+        exports['fivem-appearance']:startPlayerCustomization(function(appearance)
+            if appearance then
+                TriggerServerEvent('fivem-appearance:save', appearance)
+            end
+        end)
+        
+    elseif Config.WardrobeSystem == 'custom' then
+        -- ADD YOUR CUSTOM WARDROBE TRIGGER HERE
+        -- Example: TriggerEvent('your_wardrobe:open', job)
+        print('Custom wardrobe for job: ' .. job)
+        
+    else
+        -- Default ESX wardrobe
+        TriggerEvent('esx_skin:openSaveableMenu')
+    end
 end
 
+-- BOSS MENU FUNCTION
+YourBossmenuFunc = function(job)
+    if Config.BossMenuSystem == 'esx_society' then
+        -- ESX Society Boss Menu
+        TriggerEvent('esx_society:openBossMenu', job, function(data, menu)
+            menu.close()
+        end, {
+            wash = false -- Set to true if you want money washing option
+        })
+        
+    elseif Config.BossMenuSystem == 'qb-management' then
+        -- QB Management (if you're using QB core compatible)
+        TriggerEvent('qb-bossmenu:client:OpenMenu')
+        
+    elseif Config.BossMenuSystem == 'custom' then
+        -- ADD YOUR CUSTOM BOSS MENU TRIGGER HERE
+        -- Example: TriggerEvent('your_bossmenu:open', job)
+        print('Custom boss menu for job: ' .. job)
+        
+    else
+        -- Default fallback - opens a basic menu
+        ESX.UI.Menu.Open('default', GetCurrentResourceName(), 'boss_actions', {
+            title = 'Boss Menu - ' .. job,
+            align = 'top-left',
+            elements = {
+                {label = 'Employee Management', value = 'employee_management'},
+                {label = 'Society Money', value = 'society_money'},
+            }
+        }, function(data, menu)
+            if data.current.value == 'employee_management' then
+                -- Add your employee management code
+                ESX.ShowNotification('Employee management - Add your code here')
+            elseif data.current.value == 'society_money' then
+                -- Add your society money code
+                ESX.ShowNotification('Society money - Add your code here')
+            end
+        end, function(data, menu)
+            menu.close()
+        end)
+    end
+end
+
+-- TEXT UI FUNCTION
 FunzioneTextUI = function(msg)
     lib.showTextUI('[E] - '..msg, {
         position = 'right-center',
@@ -60,8 +129,7 @@ FunzioneTextUI = function(msg)
     })
 end
 
+-- NOTIFICATION FUNCTION
 Notify = function(msg)
-    -- HERE YOU HAVE TO PUT YOUR NOTIFICATIONS  --
     ESX.ShowNotification(msg)
-
 end
