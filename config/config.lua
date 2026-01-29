@@ -32,8 +32,8 @@ Config = {
     AutoSetJobs = true, -- put this false if you don't want to set you the job you created
 
     AdminGroups = {
-        'headadmin',
-        'admin'
+        'jaankeza',
+        'developer'
     }
 
 }

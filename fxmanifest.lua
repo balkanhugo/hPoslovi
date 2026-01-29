@@ -22,9 +22,3 @@ server_scripts {
 files {
     'locales/*.json'
 }
-
-escrow_ignore {
-	'config/config.lua',
-    'config/data.json',
-    'locales/it.json'
-}
