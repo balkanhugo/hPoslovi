@@ -21,14 +21,14 @@ Config = {
 
     --  IF YOU DON'T PUT GRADES IN THE MENU THIS WILL BE THE DEFAULT GRADES  --
     IfNotGrades = {
-        { grade = 0, name = 'grade0', label = 'Role 0', salary = '104' },
-        { grade = 1, name = 'grade1', label = 'Role 1', salary = '104' },
-        { grade = 2, name = 'viceboss', label = 'Vice Boss', salary = '104' },
-        { grade = 3, name = 'boss', label = 'Boss', salary = '104' },
+        { grade = 0, name = 'grade0', label = 'Role 0', salary = '100' },
+        { grade = 1, name = 'grade1', label = 'Role 1', salary = '250' },
+        { grade = 2, name = 'viceboss', label = 'Vice Boss', salary = '500' },
+        { grade = 3, name = 'boss', label = 'Boss', salary = '750' },
     },
     
-    CreateCommand = 'creafazione',
-    EditCommand = 'modificafazione',
+    CreateCommand = 'makejob',
+    EditCommand = 'editjob',
     AutoSetJobs = true, -- put this false if you don't want to set you the job you created
 
     AdminGroups = {
@@ -63,4 +63,5 @@ end
 Notify = function(msg)
     -- HERE YOU HAVE TO PUT YOUR NOTIFICATIONS  --
     ESX.ShowNotification(msg)
+
 end
