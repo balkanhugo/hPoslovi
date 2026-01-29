@@ -70,11 +70,16 @@
     "placeoccupat": "The spawn point is occupied",
     "vehdeposited": "Vehicle successfully stored",
     "notveh": "You are not in a vehicle",
-    "gradobass": "Your rank is too low, ask a superior!",
+    "gradobasso": "Your rank is too low, ask a superior!",
     "textuibossmenu": "BOSS MENU",
     "textuideposito": "STORAGE",
     "textuiwardrobe": "WARDROBE",
     "texuigarage1": "RETRIEVE VEHICLE",
     "texuigarage2": "STORE VEHICLE",
-    "noperms": "You don't have enough permissions"
+    "noperms": "You don't have enough permissions",
+    "vehspawned": "Vehicle spawned successfully!",
+    "invalidmodel": "Invalid vehicle model!",
+    "vehaddedsuccessfully": "Vehicle added successfully!",
+    "wardrobeopened": "Wardrobe opened",
+    "bossmenuopened": "Boss menu opened"
 }
