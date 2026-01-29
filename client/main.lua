@@ -1,6 +1,242 @@
 lib.locale()
 local old = nil
 
+-- IMPROVED GARAGE FUNCTION
+-- Add this to client/main.lua or replace the existing ApriGarage function
+
+function ApriGarage(data, job)
+    for k,v in pairs(data) do
+        if v.job == job then
+            local elements = {}
+            
+            -- Check if there are vehicles configured
+            if v.garage and v.garage.veicoli and #v.garage.veicoli > 0 then
+                for idx, vehicle in ipairs(v.garage.veicoli) do
+                    -- Only add actual vehicles, not the "add vehicle" button
+                    if vehicle.args and vehicle.args.model then
+                        table.insert(elements, {
+                            label = vehicle.label,
+                            icon = vehicle.icon or 'fa-car',
+                            iconColor = vehicle.iconColor or Config.IconColor,
+                            args = vehicle.args
+                        })
+                    end
+                end
+            end
+            
+            -- If no vehicles, show message
+            if #elements == 0 then
+                table.insert(elements, {
+                    label = locale('vehiclenotavaible'),
+                    args = { model = 'null' }
+                })
+            end
+            
+            lib.registerMenu({
+                id = 'garage'..job,
+                title = locale('garagetitle'),
+                position = Config.MenuPosition,
+                options = elements,
+                onClose = function()
+                    -- Hide text UI when menu closes
+                    lib.hideTextUI()
+                end
+            }, function(selected, scrollIndex, args)
+                if args and args.model and args.model ~= 'null' then
+                    local PlayerData = ESX.GetPlayerData()
+                    local gradoJob = tonumber(args.grado) or 0
+                    
+                    -- Check if player has required grade
+                    if PlayerData.job.grade >= gradoJob then
+                        -- Check if spawn point is clear
+                        if v.garage.pos2 then
+                            local spawnCoords = vector3(v.garage.pos2.x, v.garage.pos2.y, v.garage.pos2.z)
+                            
+                            if ESX.Game.IsSpawnPointClear(spawnCoords, 3.5) then
+                                -- Request vehicle model
+                                local modelHash = type(args.model) == 'string' and joaat(args.model) or args.model
+                                
+                                RequestModel(modelHash)
+                                while not HasModelLoaded(modelHash) do
+                                    Wait(10)
+                                end
+                                
+                                -- Spawn vehicle
+                                local vehicle = CreateVehicle(
+                                    modelHash,
+                                    spawnCoords.x,
+                                    spawnCoords.y,
+                                    spawnCoords.z,
+                                    v.garage.heading or 0.0,
+                                    true,
+                                    false
+                                )
+                                
+                                -- Wait for vehicle to exist
+                                while not DoesEntityExist(vehicle) do
+                                    Wait(10)
+                                end
+                                
+                                -- Set vehicle properties
+                                SetVehicleOnGroundProperly(vehicle)
+                                SetEntityAsMissionEntity(vehicle, true, true)
+                                SetVehicleHasBeenOwnedByPlayer(vehicle, true)
+                                SetVehicleNeedsToBeHotwired(vehicle, false)
+                                SetModelAsNoLongerNeeded(modelHash)
+                                
+                                -- Apply full kit if enabled
+                                if args.fullkit then
+                                    SetVehicleModKit(vehicle, 0)
+                                    SetVehicleMod(vehicle, 11, 3, false) -- Engine
+                                    SetVehicleMod(vehicle, 12, 2, false) -- Brakes
+                                    SetVehicleMod(vehicle, 13, 2, false) -- Transmission
+                                    SetVehicleMod(vehicle, 15, 3, false) -- Suspension
+                                    ToggleVehicleMod(vehicle, 18, true) -- Turbo
+                                    ToggleVehicleMod(vehicle, 22, true) -- Xenon headlights
+                                end
+                                
+                                -- Set custom plate if provided
+                                if args.targa and args.targa ~= "" then
+                                    SetVehicleNumberPlateText(vehicle, args.targa)
+                                end
+                                
+                                -- Set custom color if provided
+                                if args.colore then
+                                    local r = math.floor(args.colore.x or args.colore.r or 255)
+                                    local g = math.floor(args.colore.y or args.colore.g or 255)
+                                    local b = math.floor(args.colore.z or args.colore.b or 255)
+                                    
+                                    SetVehicleCustomPrimaryColour(vehicle, r, g, b)
+                                    SetVehicleCustomSecondaryColour(vehicle, r, g, b)
+                                end
+                                
+                                -- Put player in vehicle
+                                TaskWarpPedIntoVehicle(PlayerPedId(), vehicle, -1)
+                                
+                                Notify(locale('vehspawned') or 'Vehicle spawned successfully!')
+                                lib.hideMenu()
+                            else
+                                Notify(locale('placeoccupat'))
+                            end
+                        else
+                            Notify('Garage spawn position not configured!')
+                        end
+                    else
+                        Notify(locale('gradobasso'))
+                    end
+                end
+            end)
+            
+            lib.showMenu('garage'..job)
+            break
+        end
+    end
+end
+
+-- IMPROVED VEHICLE MENU WITH BETTER VALIDATION
+function MenuAddAuto()
+    local vehicleList = {}
+    
+    -- Add existing vehicles to list
+    for idx, veh in ipairs(datafaz.garage.veicoli) do
+        if veh.args and veh.args.model then
+            table.insert(vehicleList, {
+                label = veh.label,
+                icon = 'fa-car',
+                iconColor = Config.IconColor,
+                description = 'Model: ' .. veh.args.model .. ' | Grade: ' .. (veh.args.grado or 0),
+                args = veh.args
+            })
+        end
+    end
+    
+    -- Add "Add Vehicle" button at the end
+    table.insert(vehicleList, {
+        label = locale('addvehicle'),
+        description = locale('addvehdesc'),
+        args = 'ins',
+        icon = 'fa-plus',
+        iconColor = Config.IconColor
+    })
+    
+    lib.registerMenu({
+        id = 'some_menu_id4',
+        title = locale('garagemenu'),
+        position = Config.MenuPosition,
+        options = vehicleList,
+        onClose = function(keyPressed)
+            MenuGarageg()
+        end,
+    }, function(selected, scrollIndex, args)
+        if args == 'ins' then
+            local input = lib.inputDialog('VEHICLE SETTINGS', {
+                {type = 'input', label = locale('label'), placeholder = 'Police Car', required = true},
+                {type = 'input', label = locale('modelmaiusc'), placeholder = 'police', required = true},
+                {type = 'color', label = locale('color'), format = 'rgb', default = '#FFFFFF'},
+                {type = 'checkbox', label = locale('fullkit')},
+                {type = 'input', label = locale('plate'), placeholder = 'POLICE', maxlength = 8},
+                {type = 'number', label = locale('gradomin'), placeholder = '0', required = true, min = 0}
+            })
+            
+            if not input then
+                MenuAddAuto()
+                return
+            end
+            
+            -- Validate model exists
+            local modelHash = joaat(input[2])
+            if not IsModelInCdimage(modelHash) or not IsModelAVehicle(modelHash) then
+                Notify('Invalid vehicle model: ' .. input[2])
+                MenuAddAuto()
+                return
+            end
+            
+            -- Parse color
+            local color = lib.math.torgba(input[3])
+            
+            -- Add vehicle to list
+            table.insert(datafaz.garage.veicoli, {
+                label = input[1],
+                icon = 'fa-car',
+                iconColor = Config.IconColor,
+                args = {
+                    model = input[2],
+                    fullkit = input[4],
+                    targa = input[5] or '',
+                    grado = tonumber(input[6]) or 0,
+                    colore = {
+                        r = color.x,
+                        g = color.y,
+                        b = color.z
+                    }
+                }
+            })
+            
+            Notify('Vehicle added successfully!')
+            MenuAddAuto()
+        else
+            -- Delete vehicle
+            local alert = lib.alertDialog({
+                header = locale('deleteveh'),
+                content = locale('deleteveh2'),
+                centered = false,
+                cancel = true
+            })
+            
+            if alert == 'confirm' then
+                table.remove(datafaz.garage.veicoli, selected)
+                Notify(locale('confirmremove'))
+            else
+                Notify(locale('deleteveh3'))
+            end
+            
+            MenuAddAuto()
+        end
+    end)
+    
+    lib.showMenu('some_menu_id4')
+end
+
 function ApriMenu(label,job, modifica, selezionata)
     datafaz = {}
     datafaz.job = job
@@ -244,57 +480,6 @@ function MenuGarageg()
     lib.showMenu('some_menu_id3')
 end
 
--- lista veh
-function MenuAddAuto()
-    table.insert(datafaz.garage.veicoli, {label = locale('addvehicle'), description = locale('addvehdesc'), args = 'ins', icon = 'fa-plus', iconColor = Config.IconColor})
-    lib.registerMenu({
-        id = 'some_menu_id4',
-        title = locale('garagemenu'),
-        position = Config.MenuPosition,
-        options = datafaz.garage.veicoli,
-        onClose = function(keyPressed)
-            MenuGarageg()
-        end,
-    }, function(selected, scrollIndex, args)
-        if args == 'ins' then 
-            local input = lib.inputDialog('IMPOSTAZIONI VEICOLO', {locale('label'), locale('modelmaiusc'), {type = 'color', label = locale('color'), format = 'rgb'}, {type = 'checkbox', label = locale('fullkit')}, locale('plate'), locale('gradomin')})
-        
-            if not input then return end
-            print(lib.math.torgba(input[3]))
-            table.remove(datafaz.garage.veicoli, #datafaz.garage.veicoli)
-            table.insert(datafaz.garage.veicoli, {
-                label = input[1],
-                icon = 'fa-car', 
-                iconColor = Config.IconColor,
-                args = {
-                    model = input[2],
-                    fullkit = input[4],
-                    targa = input[5],
-                    grado = input[6],
-                    colore = lib.math.torgba(input[3])
-                }
-            })
-            MenuAddAuto()
-        else
-            local alert = lib.alertDialog({
-                header = locale('deleteveh'),
-                content = locale('deleteveh2'),
-                centered = false,
-                cancel = true
-            })
-            if alert == 'confirm' then
-                table.remove(datafaz.garage.veicoli, selected)
-                table.remove(datafaz.garage.veicoli, #datafaz.garage.veicoli)
-                Notify(locale('confirmremove'))
-                MenuAddAuto()
-            else
-                Notify(locale('deleteveh3'))
-            end
-        end
-    end)
-    
-    lib.showMenu('some_menu_id4')
-end
 
 MenuGradi = function()
     table.insert(datafaz.gradi, {label = locale('addgrade'), description = locale('gradedesc'), args = 'ins', icon = 'fa-plus', iconColor = Config.IconColor})
@@ -337,56 +522,6 @@ MenuGradi = function()
     lib.showMenu('gradi')
 end
 
-function ApriGarage(data, job)
-    for k,v in pairs(data) do
-        if v.job == job then
-            local elements = v.garage.veicoli
-            if #elements == 0 then
-                table.insert(elements,{label = locale('vehiclenotavaible'), args = 'null'})
-            end
-            lib.registerMenu({
-                id = 'garage'..job,
-                title = locale('garagetitle'),
-                position = Config.MenuPosition,
-                options = elements
-            }, function(selected, scrollIndex, args)
-                    if args.model ~= 'null' and args.model ~= nil then
-                        local PlayerData = ESX.GetPlayerData()
-                        local gradoJob = tonumber(args.grado) or 0
-                        if gradoJob <= PlayerData.job.grade then
-                            if ESX.Game.IsSpawnPointClear(v.garage.pos2, 3.5) then
-                                ESX.Game.SpawnVehicle(args.model, v.garage.pos2, v.garage.heading, function(vehicle)
-                                    TaskWarpPedIntoVehicle(PlayerPedId(), vehicle, -1)
-                                    SetPedIntoVehicle(PlayerPedId(), vehicle, -1)
-                                    if args.fullkit then
-                                        SetVehicleModKit(vehicle, 0)
-                                        SetVehicleMod(vehicle, 15, 3, false)
-                                        SetVehicleMod(vehicle, 13, 2, false)
-                                        SetVehicleMod(vehicle, 11, 3, false)
-                                        SetVehicleMod(vehicle, 12, 2, false)
-                                        ToggleVehicleMod(vehicle, 22, true)
-                                        ToggleVehicleMod(vehicle, 18, true)
-                                    end
-                                    if args.targa ~= "" then
-                                        SetVehicleNumberPlateText(vehicle, args.targa)
-                                    end
-                                    if args.colore then
-                                        SetVehicleCustomPrimaryColour(vehicle, args.colore.x, args.colore.y, args.colore.z)
-                                        SetVehicleCustomSecondaryColour(vehicle, args.colore.x, args.colore.y, args.colore.z)
-                                    end
-                                end)
-                            else   
-                                Notify(locale('placeoccupat'))
-                            end
-                        else
-                            Notify(locale('gradobasso'))
-                        end
-                    end
-            end)
-            lib.showMenu('garage'..job)
-        end
-    end
-end
 
 RegisterNetEvent('creafaz-cl', function(data)
     CreaMark(data)
