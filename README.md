@@ -202,12 +202,6 @@ locale('textuibossmenu')  -- Returns translated string
 
 ---
 
-## 🐛 Known Issues
-
-None at this time! This is a stable V1.0 release.
-
----
-
 ## 📧 Support
 
 If you encounter issues:
@@ -220,9 +214,9 @@ If you encounter issues:
 
 ## 🎉 Credits
 
-- Original Script: [Your Credits]
-- V1.0 Updates: Claude AI Assistant
-- Testing: [Your Testing Team]
+- Original Script: nxs-dev
+- Heaviely modified by: chiaroscuric using Claude
+- Testing: Hugo Roleplay Staff
 
 ---
 
