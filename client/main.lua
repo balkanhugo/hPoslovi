@@ -10,12 +10,18 @@ function ApriGarage(data, job)
             -- Check if there are vehicles configured
             if v.garage and v.garage.veicoli and #v.garage.veicoli > 0 then
                 for idx, vehicle in ipairs(v.garage.veicoli) do
-                    -- Only add actual vehicles, not the "add vehicle" button
-                    if vehicle.args and vehicle.args.model then
-                        local vehicleData = vehicle.args
+                    -- Check if vehicle has args OR if it's stored directly with model
+                    local vehicleData = vehicle.args or vehicle
+                    
+                    -- Only add actual vehicles, not temporary entries
+                    if vehicleData and vehicleData.model and vehicleData.model ~= "" then
                         table.insert(elements, {
-                            title = vehicle.label,
-                            description = string.format('Model: %s | Min Grade: %s', vehicleData.model, vehicleData.grado or 0),
+                            title = vehicle.label or vehicleData.label or vehicleData.model,
+                            description = string.format('Model: %s | Min Grade: %s | %s', 
+                                vehicleData.model, 
+                                vehicleData.grado or 0,
+                                vehicleData.fullkit and 'Full Kit' or 'Stock'
+                            ),
                             icon = vehicle.icon or 'fa-car',
                             iconColor = vehicle.iconColor or Config.IconColor,
                             onSelect = function()
@@ -40,7 +46,8 @@ function ApriGarage(data, job)
             lib.registerContext({
                 id = 'garage_'..job,
                 title = locale('garagetitle'),
-                options = elements
+                options = elements,
+                canClose = true
             })
             
             lib.showContext('garage_'..job)
@@ -164,22 +171,24 @@ function MenuAddAuto()
     
     -- Add existing vehicles to list
     for idx, veh in ipairs(datafaz.garage.veicoli) do
-        if veh.args and veh.args.model then
+        local vehicleData = veh.args or veh
+        if vehicleData and vehicleData.model and vehicleData.model ~= "" then
             table.insert(vehicleList, {
-                title = veh.label,
+                title = veh.label or vehicleData.label or vehicleData.model,
                 icon = 'fa-car',
                 iconColor = Config.IconColor,
                 description = string.format('Model: %s | Grade: %s | %s', 
-                    veh.args.model, 
-                    veh.args.grado or 0,
-                    veh.args.fullkit and 'Full Kit' or 'Stock'
+                    vehicleData.model, 
+                    vehicleData.grado or 0,
+                    vehicleData.fullkit and 'Full Kit' or 'Stock'
                 ),
                 onSelect = function()
                     -- Show vehicle options (edit or delete)
                     lib.registerContext({
                         id = 'vehicle_options_'..idx,
-                        title = veh.label,
+                        title = veh.label or vehicleData.model,
                         menu = 'vehicle_menu',
+                        canClose = true,
                         options = {
                             {
                                 title = 'Delete Vehicle',
@@ -211,7 +220,7 @@ function MenuAddAuto()
                                 iconColor = '#00FF00',
                                 onSelect = function()
                                     if datafaz.garage.pos2 then
-                                        SpawnJobVehicle(datafaz.garage, veh.args)
+                                        SpawnJobVehicle(datafaz.garage, vehicleData)
                                     else
                                         Notify('Please set spawn position first!')
                                     end
@@ -297,6 +306,7 @@ function MenuAddAuto()
         id = 'vehicle_menu',
         title = locale('garagemenu'),
         menu = 'garage_settings',
+        canClose = true,
         options = vehicleList
     })
     
@@ -410,8 +420,11 @@ function ApriMenu(label, job, modifica, selezionata)
                         table.remove(datafaz.inv, i)
                     end
                 end
+                -- Clean up invalid vehicles
                 for i = #datafaz.garage.veicoli, 1, -1 do
-                    if not datafaz.garage.veicoli[i].args then
+                    local veh = datafaz.garage.veicoli[i]
+                    local vehData = veh.args or veh
+                    if not vehData or not vehData.model or vehData.model == "" then
                         table.remove(datafaz.garage.veicoli, i)
                     end
                 end
@@ -451,6 +464,7 @@ function ApriMenu(label, job, modifica, selezionata)
     lib.registerContext({
         id = 'menufaz'..job,
         title = locale('fazione')..label,
+        canClose = true,
         options = opt
     })
     
@@ -478,6 +492,7 @@ ListaFazs = function(data)
     lib.registerContext({
         id = 'lista',
         title = locale('titleeditjob'),
+        canClose = true,
         options = elementi
     })
     
@@ -563,6 +578,7 @@ function MenuGarage()
         id = 'inv_menu',
         title = locale('invtitle'),
         menu = 'menufaz'..datafaz.job,
+        canClose = true,
         options = invOptions
     })
     
@@ -630,6 +646,7 @@ function MenuGarageg()
         id = 'garage_settings',
         title = locale('garagemenu'),
         menu = 'menufaz'..datafaz.job,
+        canClose = true,
         options = garageOptions
     })
     
@@ -702,6 +719,7 @@ MenuGradi = function()
         id = 'gradi',
         title = 'Gradi',
         menu = 'menufaz'..datafaz.job,
+        canClose = true,
         options = gradeOptions
     })
     
