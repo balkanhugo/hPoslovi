@@ -1,759 +1,832 @@
 lib.locale()
 local old = nil
+local datafaz = {} -- Defined locally to avoid global scope issues
+local isModifying = false -- Track if we're modifying an existing job
 
--- IMPROVED GARAGE FUNCTION WITH PROPER VEHICLE SPAWNING
-function ApriGarage(data, job)
-    for k,v in pairs(data) do
-        if v.job == job then
-            local elements = {}
-            
-            -- Check if there are vehicles configured
-            if v.garage and v.garage.veicoli and #v.garage.veicoli > 0 then
-                for idx, vehicle in ipairs(v.garage.veicoli) do
-                    -- Check if vehicle has args OR if it's stored directly with model
-                    local vehicleData = vehicle.args or vehicle
-                    
-                    -- Only add actual vehicles, not temporary entries
-                    if vehicleData and vehicleData.model and vehicleData.model ~= "" then
-                        table.insert(elements, {
-                            title = vehicle.label or vehicleData.label or vehicleData.model,
-                            description = string.format('Model: %s | Min Grade: %s | %s', 
-                                vehicleData.model, 
-                                vehicleData.grado or 0,
-                                vehicleData.fullkit and 'Full Kit' or 'Stock'
-                            ),
-                            icon = vehicle.icon or 'fa-car',
-                            iconColor = vehicle.iconColor or Config.IconColor,
-                            onSelect = function()
-                                SpawnJobVehicle(v.garage, vehicleData)
-                            end
-                        })
-                    end
-                end
-            end
-            
-            -- If no vehicles, show message
-            if #elements == 0 then
-                table.insert(elements, {
-                    title = locale('vehiclenotavaible'),
-                    description = 'No vehicles configured for this job',
-                    icon = 'fa-exclamation-triangle',
-                    iconColor = '#FF0000',
-                    disabled = true
-                })
-            end
-            
-            lib.registerContext({
-                id = 'garage_'..job,
-                title = locale('garagetitle'),
-                options = elements,
-                canClose = true
-            })
-            
-            lib.showContext('garage_'..job)
+-- HELPER: Hex to RGB Converter
+local function HexToRGB(hex)
+    hex = hex:gsub("#", "")
+    return {
+        r = tonumber("0x"..hex:sub(1,2)) or 255,
+        g = tonumber("0x"..hex:sub(3,4)) or 255,
+        b = tonumber("0x"..hex:sub(5,6)) or 255
+    }
+end
+
+-- HELPER: Check Permissions
+local function CanAccessGroup(myGrade, requiredGrade)
+    if not requiredGrade then return true end
+    return myGrade >= (tonumber(requiredGrade) or 0)
+end
+
+-- WARDROBE FUNCTION - REDESIGNED WITH ILLENIUM APPEARANCE
+YourWardRobeFunc = function(job)
+    local PlayerData = ESX.GetPlayerData()
+    
+    -- Get boss grade for this job
+    local bossGrade = nil
+    local jsn = LoadResourceFile(GetCurrentResourceName(), 'config/data.json')
+    local dcd = json.decode(jsn) or {}
+    
+    for k,v in pairs(dcd) do
+        if v.job == job and v.bossmenu and v.bossmenu.gradoboss then
+            bossGrade = tonumber(v.bossmenu.gradoboss)
             break
         end
     end
+    
+    local canManageOutfits = bossGrade and PlayerData.job.grade >= bossGrade
+    
+    lib.callback('hPoslovi:server:getJobOutfits', false, function(outfits)
+        local menuOptions = {}
+        
+        -- Button 1: Open Ped Menu (illenium-appearance)
+        table.insert(menuOptions, {
+            label = 'Open Outfit Menu',
+            description = 'Create and customize your appearance',
+            icon = 'user-pen',
+            iconColor = '#3B82F6',
+        })
+        
+        -- Button 2: Save Current Outfit (only for authorized users)
+        if canManageOutfits then
+            table.insert(menuOptions, {
+                label = 'Save Current Outfit',
+                description = 'Save your current appearance as a job outfit',
+                icon = 'floppy-disk',
+                iconColor = '#10B981',
+            })
+        end
+        
+        -- Buttons 3+: Available Outfits
+        local outfitList = {}
+        for outfitName, outfitData in pairs(outfits) do
+            table.insert(outfitList, {name = outfitName, data = outfitData})
+        end
+        
+        -- Sort outfits alphabetically for consistent display
+        table.sort(outfitList, function(a, b) return a.name < b.name end)
+        
+        for _, outfit in ipairs(outfitList) do
+            table.insert(menuOptions, {
+                label = outfit.name,
+                description = 'Click to wear this outfit',
+                icon = 'shirt',
+                iconColor = Config.IconColor or '#6366F1',
+                args = {outfitName = outfit.name, outfitData = outfit.data}
+            })
+        end
+        
+        -- Add delete option at the end if user has permissions and outfits exist
+        if canManageOutfits and next(outfits) then
+            table.insert(menuOptions, {
+                label = 'Delete Outfit',
+                description = 'Remove a saved outfit',
+                icon = 'trash',
+                iconColor = '#EF4444',
+            })
+        end
+        
+        lib.registerMenu({
+            id = 'wardrobe_menu_' .. job,
+            title = 'Wardrobe - ' .. job,
+            position = Config.MenuPosition or 'top-right',
+            options = menuOptions
+        }, function(selected, scrollIndex, args)
+            local option = menuOptions[selected]
+            if not option then return end
+            
+            -- Button 1: Open Ped Menu
+            if option.label == 'Open Outfit Menu' then
+                lib.hideMenu(true)
+                TriggerEvent('illenium-appearance:client:openOutfitMenu')
+                
+            -- Button 2: Save Current Outfit
+            elseif option.label == 'Save Current Outfit' then
+                local input = lib.inputDialog('Save Outfit', {
+                    {type = 'input', label = 'Outfit Name', description = 'Enter a name for this outfit', required = true, min = 3, max = 50}
+                })
+                if input and input[1] then
+                    local appearance = exports['illenium-appearance']:getPedAppearance(PlayerPedId())
+                    if appearance then
+                        TriggerServerEvent('hPoslovi:server:saveJobOutfit', job, input[1], appearance)
+                        lib.notify({
+                            title = 'Wardrobe',
+                            description = 'Outfit "' .. input[1] .. '" saved!',
+                            type = 'success'
+                        })
+                        Wait(500)
+                        YourWardRobeFunc(job)
+                    else
+                        lib.notify({
+                            title = 'Wardrobe',
+                            description = 'Failed to get appearance data',
+                            type = 'error'
+                        })
+                    end
+                end
+                
+            -- Delete Outfit option
+            elseif option.label == 'Delete Outfit' then
+                local deleteOptions = {}
+                for outfitName in pairs(outfits) do
+                    table.insert(deleteOptions, {
+                        label = outfitName,
+                        icon = 'trash',
+                        iconColor = '#EF4444',
+                    })
+                end
+                
+                -- Sort delete options alphabetically
+                table.sort(deleteOptions, function(a, b) return a.label < b.label end)
+                
+                lib.registerMenu({
+                    id = 'delete_outfit_menu',
+                    title = 'Delete Outfit',
+                    position = Config.MenuPosition or 'top-right',
+                    options = deleteOptions,
+                    onClose = function()
+                        YourWardRobeFunc(job)
+                    end
+                }, function(deleteSelected, scrollIndex2, args2)
+                    local outfitToDelete = deleteOptions[deleteSelected].label
+                    local confirm = lib.alertDialog({
+                        header = 'Delete Outfit',
+                        content = 'Are you sure you want to delete "' .. outfitToDelete .. '"?',
+                        centered = true,
+                        cancel = true
+                    })
+                    if confirm == 'confirm' then
+                        TriggerServerEvent('hPoslovi:server:deleteJobOutfit', job, outfitToDelete)
+                        lib.notify({
+                            title = 'Wardrobe',
+                            description = 'Outfit deleted',
+                            type = 'info'
+                        })
+                        Wait(500)
+                        YourWardRobeFunc(job)
+                    end
+                end)
+                lib.showMenu('delete_outfit_menu')
+                
+            -- Buttons 3+: Load saved outfit
+            elseif args and args.outfitData then
+                exports['illenium-appearance']:setPlayerAppearance(args.outfitData)
+                lib.notify({
+                    title = 'Wardrobe',
+                    description = 'Outfit "' .. args.outfitName .. '" applied',
+                    type = 'success'
+                })
+                lib.hideMenu(true)
+            end
+        end)
+        lib.showMenu('wardrobe_menu_' .. job)
+    end, job)
 end
 
--- VEHICLE SPAWNING FUNCTION
-function SpawnJobVehicle(garageData, vehicleData)
+-- =======================================================
+-- COMPLETELY REWRITTEN GARAGE SYSTEM
+-- =======================================================
+
+-- GARAGE FUNCTION (Player Usage) - DATABASE VERSION
+function ApriGarage(data, job)
+    local jobData = nil
+    for k,v in pairs(data) do
+        if v.job == job then 
+            jobData = v 
+            break 
+        end
+    end
+
+    if not jobData then 
+        Notify('Job data not found!')
+        return 
+    end
+
+    -- Ensure garage structure exists
+    if not jobData.garage then
+        Notify('Garage not configured for this job!')
+        return
+    end
+
+    -- Load vehicles from database
+    lib.callback('hPoslovi:server:getJobVehicles', false, function(vehicles)
+        local elements = {}
+        
+        -- List Vehicles from database
+        if vehicles and #vehicles > 0 then
+            for idx, vehicle in ipairs(vehicles) do
+                local gradeText = vehicle.min_grade and ("Min Grade: "..vehicle.min_grade) or "No Grade Required"
+                table.insert(elements, {
+                    label = vehicle.label,
+                    description = vehicle.model .. " | " .. gradeText,
+                    icon = 'car',
+                    iconColor = Config.IconColor,
+                    args = {
+                        vehicleData = vehicle,
+                        garageData = jobData.garage
+                    }
+                })
+            end
+        else
+            table.insert(elements, {
+                label = locale('vehiclenotavaible'),
+                icon = 'circle-xmark',
+                disabled = true
+            })
+        end
+
+        lib.registerMenu({
+            id = 'garage_menu_'..job,
+            title = locale('garagetitle'),
+            position = Config.MenuPosition or 'top-right',
+            options = elements
+        }, function(selected, scrollIndex, args)
+            local option = elements[selected]
+            if option and option.args then
+                SpawnJobVehicle(option.args.vehicleData, option.args.garageData)
+            end
+        end)
+        lib.showMenu('garage_menu_'..job)
+    end, job)
+end
+
+-- SPAWN VEHICLE FUNCTION - DATABASE VERSION
+function SpawnJobVehicle(vehicleData, garageData)
     local PlayerData = ESX.GetPlayerData()
-    local gradoJob = tonumber(vehicleData.grado) or 0
     
-    -- Check if player has required grade
+    -- Support both old format (args) and new database format
+    local args = vehicleData.args or vehicleData
+    local gradoJob = tonumber(args.grado or args.min_grade) or 0
+    
+    -- Grade Check
     if PlayerData.job.grade < gradoJob then
         Notify(locale('gradobasso'))
         return
     end
-    
-    -- Check if spawn point is configured
-    if not garageData.pos2 then
-        Notify('Garage spawn position not configured!')
-        return
+
+    -- Validate spawn point
+    if not garageData.pos2 then 
+        Notify('Garage Spawn Point Not Set!') 
+        return 
     end
-    
+
     local spawnCoords = vector3(garageData.pos2.x, garageData.pos2.y, garageData.pos2.z)
-    
+    local heading = garageData.heading or 0.0
+
     -- Check if spawn point is clear
-    if not ESX.Game.IsSpawnPointClear(spawnCoords, 3.5) then
+    if not ESX.Game.IsSpawnPointClear(spawnCoords, 3.0) then
         Notify(locale('placeoccupat'))
         return
     end
+
+    -- Model validation
+    local model = args.model or vehicleData.model
+    local modelHash = type(model) == 'string' and joaat(model) or model
     
-    -- Request vehicle model
-    local modelHash = type(vehicleData.model) == 'string' and joaat(vehicleData.model) or vehicleData.model
-    
-    if not IsModelInCdimage(modelHash) or not IsModelAVehicle(modelHash) then
-        Notify('Invalid vehicle model: ' .. tostring(vehicleData.model))
+    if not IsModelInCdimage(modelHash) then 
+        Notify('Invalid Model: ' .. tostring(model)) 
+        return 
+    end
+
+    if not IsModelAVehicle(modelHash) then
+        Notify('Model is not a vehicle: ' .. tostring(model))
         return
     end
-    
+
+    -- Load model
     RequestModel(modelHash)
     local timeout = 0
-    while not HasModelLoaded(modelHash) and timeout < 5000 do
-        Wait(10)
+    while not HasModelLoaded(modelHash) and timeout < 5000 do 
+        Wait(10) 
         timeout = timeout + 10
     end
-    
+
     if not HasModelLoaded(modelHash) then
-        Notify('Failed to load vehicle model!')
+        Notify('Failed to load vehicle model')
         return
     end
-    
-    -- Spawn vehicle
-    local vehicle = CreateVehicle(
-        modelHash,
-        spawnCoords.x,
-        spawnCoords.y,
-        spawnCoords.z,
-        garageData.heading or 0.0,
-        true,
-        false
-    )
-    
-    -- Wait for vehicle to exist
-    timeout = 0
-    while not DoesEntityExist(vehicle) and timeout < 3000 do
-        Wait(10)
-        timeout = timeout + 10
-    end
+
+    -- Create vehicle
+    local vehicle = CreateVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, true, false)
     
     if not DoesEntityExist(vehicle) then
-        Notify('Failed to spawn vehicle!')
+        Notify('Failed to create vehicle')
         SetModelAsNoLongerNeeded(modelHash)
         return
     end
-    
-    -- Set vehicle properties
-    SetVehicleOnGroundProperly(vehicle)
+
+    -- Wait for vehicle to be fully created
+    local vehicleTimeout = 0
+    while not DoesEntityExist(vehicle) and vehicleTimeout < 2000 do
+        Wait(10)
+        vehicleTimeout = vehicleTimeout + 10
+    end
+
+    -- Essential Network & Entity setup
     SetEntityAsMissionEntity(vehicle, true, true)
     SetVehicleHasBeenOwnedByPlayer(vehicle, true)
     SetVehicleNeedsToBeHotwired(vehicle, false)
-    SetModelAsNoLongerNeeded(modelHash)
+    SetVehRadioStation(vehicle, 'OFF')
     
-    -- Apply full kit if enabled
-    if vehicleData.fullkit then
+    -- Handle Color (Supports database format color_r/g/b and old colore format)
+    if vehicleData.color_r and vehicleData.color_g and vehicleData.color_b then
+        -- Database format
+        SetVehicleCustomPrimaryColour(vehicle, vehicleData.color_r, vehicleData.color_g, vehicleData.color_b)
+        SetVehicleCustomSecondaryColour(vehicle, vehicleData.color_r, vehicleData.color_g, vehicleData.color_b)
+    elseif args.colore then
+        -- Old format
+        local r = args.colore.r or args.colore.x or 255
+        local g = args.colore.g or args.colore.y or 255
+        local b = args.colore.b or args.colore.z or 255
+        SetVehicleCustomPrimaryColour(vehicle, r, g, b)
+        SetVehicleCustomSecondaryColour(vehicle, r, g, b)
+    end
+
+    -- Handle Plate (supports both formats)
+    local plate = vehicleData.plate or args.targa
+    if plate and plate ~= "" then
+        SetVehicleNumberPlateText(vehicle, tostring(plate))
+    end
+
+    -- Handle Mods (supports both formats)
+    local fullkit = vehicleData.fullkit == 1 or args.fullkit
+    if fullkit then
         SetVehicleModKit(vehicle, 0)
         SetVehicleMod(vehicle, 11, 3, false) -- Engine
         SetVehicleMod(vehicle, 12, 2, false) -- Brakes
         SetVehicleMod(vehicle, 13, 2, false) -- Transmission
         SetVehicleMod(vehicle, 15, 3, false) -- Suspension
         ToggleVehicleMod(vehicle, 18, true) -- Turbo
-        ToggleVehicleMod(vehicle, 22, true) -- Xenon headlights
+        ToggleVehicleMod(vehicle, 22, true) -- Xenon
     end
-    
-    -- Set custom plate if provided
-    if vehicleData.targa and vehicleData.targa ~= "" then
-        SetVehicleNumberPlateText(vehicle, vehicleData.targa)
-    end
-    
-    -- Set custom color if provided
-    if vehicleData.colore then
-        local r = math.floor(vehicleData.colore.r or 255)
-        local g = math.floor(vehicleData.colore.g or 255)
-        local b = math.floor(vehicleData.colore.b or 255)
-        
-        SetVehicleCustomPrimaryColour(vehicle, r, g, b)
-        SetVehicleCustomSecondaryColour(vehicle, r, g, b)
-    end
-    
+
+    -- Clean up model
+    SetModelAsNoLongerNeeded(modelHash)
+
     -- Put player in vehicle
     TaskWarpPedIntoVehicle(PlayerPedId(), vehicle, -1)
-    
-    Notify(locale('vehspawned') or 'Vehicle spawned successfully!')
-    lib.hideContext()
+    Notify(locale('vehspawned'))
+    lib.hideMenu(true)
 end
 
--- IMPROVED VEHICLE MENU WITH BETTER VALIDATION
-function MenuAddAuto()
-    local vehicleList = {}
-    
-    -- Add existing vehicles to list
-    for idx, veh in ipairs(datafaz.garage.veicoli) do
-        local vehicleData = veh.args or veh
-        if vehicleData and vehicleData.model and vehicleData.model ~= "" then
-            table.insert(vehicleList, {
-                title = veh.label or vehicleData.label or vehicleData.model,
-                icon = 'fa-car',
-                iconColor = Config.IconColor,
-                description = string.format('Model: %s | Grade: %s | %s', 
-                    vehicleData.model, 
-                    vehicleData.grado or 0,
-                    vehicleData.fullkit and 'Full Kit' or 'Stock'
-                ),
-                onSelect = function()
-                    -- Show vehicle options (edit or delete)
-                    lib.registerContext({
-                        id = 'vehicle_options_'..idx,
-                        title = veh.label or vehicleData.model,
-                        menu = 'vehicle_menu',
-                        canClose = true,
-                        options = {
-                            {
-                                title = 'Delete Vehicle',
-                                description = 'Remove this vehicle from the list',
-                                icon = 'fa-trash',
-                                iconColor = '#FF0000',
-                                onSelect = function()
-                                    local alert = lib.alertDialog({
-                                        header = locale('deleteveh'),
-                                        content = locale('deleteveh2'),
-                                        centered = false,
-                                        cancel = true
-                                    })
-                                    
-                                    if alert == 'confirm' then
-                                        table.remove(datafaz.garage.veicoli, idx)
-                                        Notify(locale('confirmremove'))
-                                        MenuAddAuto()
-                                    else
-                                        Notify(locale('deleteveh3'))
-                                        MenuAddAuto()
-                                    end
-                                end
-                            },
-                            {
-                                title = 'Test Spawn',
-                                description = 'Spawn this vehicle to test it',
-                                icon = 'fa-play',
-                                iconColor = '#00FF00',
-                                onSelect = function()
-                                    if datafaz.garage.pos2 then
-                                        SpawnJobVehicle(datafaz.garage, vehicleData)
-                                    else
-                                        Notify('Please set spawn position first!')
-                                    end
-                                end
-                            }
-                        }
-                    })
-                    lib.showContext('vehicle_options_'..idx)
-                end
-            })
-        end
-    end
-    
-    -- Add "Add Vehicle" button at the end
-    table.insert(vehicleList, {
-        title = locale('addvehicle'),
-        description = locale('addvehdesc'),
-        icon = 'fa-plus',
-        iconColor = Config.IconColor,
-        onSelect = function()
-            local input = lib.inputDialog('VEHICLE SETTINGS', {
-                {type = 'input', label = locale('label'), placeholder = 'Police Car', required = true},
-                {type = 'input', label = locale('modelmaiusc'), placeholder = 'police', required = true},
-                {type = 'color', label = locale('color'), default = '#FFFFFF'},
-                {type = 'checkbox', label = locale('fullkit')},
-                {type = 'input', label = locale('plate'), placeholder = 'POLICE', maxlength = 8},
-                {type = 'number', label = locale('gradomin'), placeholder = '0', required = true, min = 0}
-            })
-            
-            if not input then
-                MenuAddAuto()
-                return
-            end
-            
-            -- Validate model exists
-            local modelHash = joaat(input[2])
-            if not IsModelInCdimage(modelHash) or not IsModelAVehicle(modelHash) then
-                Notify('Invalid vehicle model: ' .. input[2])
-                MenuAddAuto()
-                return
-            end
-            
-            -- Parse color from hex
-            local colorHex = input[3] or '#FFFFFF'
-            local r, g, b = 255, 255, 255
-            
-            if colorHex and type(colorHex) == 'string' then
-                -- Remove # if present
-                colorHex = colorHex:gsub('#', '')
-                
-                -- Convert hex to RGB
-                if #colorHex == 6 then
-                    r = tonumber(colorHex:sub(1,2), 16) or 255
-                    g = tonumber(colorHex:sub(3,4), 16) or 255
-                    b = tonumber(colorHex:sub(5,6), 16) or 255
-                end
-            end
-            
-            -- Add vehicle to list
-            table.insert(datafaz.garage.veicoli, {
-                label = input[1],
-                icon = 'fa-car',
-                iconColor = Config.IconColor,
-                args = {
-                    model = input[2],
-                    fullkit = input[4],
-                    targa = input[5] or '',
-                    grado = tonumber(input[6]) or 0,
-                    colore = {
-                        r = r,
-                        g = g,
-                        b = b
-                    }
-                }
-            })
-            
-            Notify('Vehicle added successfully!')
-            MenuAddAuto()
-        end
-    })
-    
-    lib.registerContext({
-        id = 'vehicle_menu',
-        title = locale('garagemenu'),
-        menu = 'garage_settings',
-        canClose = true,
-        options = vehicleList
-    })
-    
-    lib.showContext('vehicle_menu')
-end
+-- =======================================================
+-- ADMIN / JOB CREATION MENUS
+-- =======================================================
 
 function ApriMenu(label, job, modifica, selezionata)
-    datafaz = {}
-    datafaz.job = job
-    datafaz.label = label
-    datafaz.bossmenu = {}
-    datafaz.garage = {
-        veicoli = {}
-    }
-    datafaz.inv = {}
-    datafaz.gradi = {}
+    -- Set global modification state
+    isModifying = modifica
     
-    local opt = {
-        {
-            title = locale('bossmenu'),
-            description = locale('bossmenudesc'),
-            icon = 'fa-user-tie',
-            iconColor = Config.IconColor,
-            onSelect = function()
-                local i = lib.inputDialog(locale('dialogboss1'), { locale('dialogboss2')})
-                if not i then return end
-                if not tonumber(i[1]) then 
-                    Notify(locale('requirednumber'))
-                    lib.showContext('menufaz'..job)
-                    return 
-                end
-                datafaz.bossmenu.gradoboss = tonumber(i[1])
-                
-                local alert = lib.alertDialog({
-                    header = locale('confirmpos'),
-                    content = locale('confirmpos2'),
-                    centered = true,
-                    cancel = true
-                })
-                if alert == 'confirm' then
-                    datafaz.bossmenu.pos = GetEntityCoords(PlayerPedId())
-                    Notify(locale('cofirmnotif'))
-                else
-                    Notify(locale('cancelnotif'))
-                end
-                lib.showContext('menufaz'..job)
-            end
-        },
-        {
-            title = locale('inv'),
-            description = locale('inv2'),
-            icon = 'fa-cart-flatbed',
-            iconColor = Config.IconColor,
-            onSelect = function()
-                MenuGarage()
-            end
-        },
-        {
-            title = locale('camerino'),
-            description = locale('descamerino'),
-            icon = 'fa-shirt',
-            iconColor = Config.IconColor,
-            onSelect = function()
-                local alert = lib.alertDialog({
-                    header = locale('confirmpos'),
-                    content = locale('confirmpos2'),
-                    centered = true,
-                    cancel = true
-                })
-                if alert == 'confirm' then
-                    datafaz.camerino = GetEntityCoords(PlayerPedId())
-                    Notify(locale('cofirmnotif'))
-                else
-                    Notify(locale('cancelnotif'))
-                end
-                lib.showContext('menufaz'..job)
-            end
-        },
-        {
-            title = locale('garage'),
-            description = locale('garage2'),
-            icon = 'fa-warehouse',
-            iconColor = Config.IconColor,
-            onSelect = function()
-                MenuGarageg()
-            end
-        },
-        {
-            title = locale('gradi'),
-            description = locale('gradi2'),
-            icon = 'fa-crown',
-            iconColor = Config.IconColor,
-            onSelect = function()
-                MenuGradi()
-            end
-        },
-        {
-            title = locale('conferma'),
-            description = locale('conferma2'),
-            icon = 'fa-solid fa-circle-check',
-            iconColor = Config.IconColor,
-            onSelect = function()
-                -- Clean up temporary entries
-                for i = #datafaz.gradi, 1, -1 do
-                    if datafaz.gradi[i].args == 'ins' then
-                        table.remove(datafaz.gradi, i)
-                    end
-                end
-                for i = #datafaz.inv, 1, -1 do
-                    if datafaz.inv[i].args == 'ins' then
-                        table.remove(datafaz.inv, i)
-                    end
-                end
-                -- Clean up invalid vehicles
-                for i = #datafaz.garage.veicoli, 1, -1 do
-                    local veh = datafaz.garage.veicoli[i]
-                    local vehData = veh.args or veh
-                    if not vehData or not vehData.model or vehData.model == "" then
-                        table.remove(datafaz.garage.veicoli, i)
-                    end
-                end
-                
-                if #datafaz.gradi == 0 then 
-                    Notify(locale('notgradesnot'))
-                    datafaz.gradi = Config.IfNotGrades
-                end
-                if modifica then
-                    TriggerServerEvent('creafaz', datafaz, selezionata)
-                    datafaz = nil
-                else
-                    TriggerServerEvent('creafaz', datafaz)
-                    datafaz = nil
-                end
-            end
-        }
-    }
-    
+    -- If modifying, load existing data from server
     if modifica then 
-        for k,v in pairs(json.decode(LoadResourceFile(GetCurrentResourceName(), 'config/data.json'))) do 
-            if v.job == job then 
-                datafaz = v
-            end
-        end
-        table.insert(opt, {
-            title = locale('deletejob'),
-            description = locale('deletejob2'),
-            icon = 'fa-trash',
-            iconColor = '#FF0000',
-            onSelect = function()
-                TriggerServerEvent('eliminafaz', datafaz, selezionata)
-            end
-        })
-    end
-
-    lib.registerContext({
-        id = 'menufaz'..job,
-        title = locale('fazione')..label,
-        canClose = true,
-        options = opt
-    })
-    
-    lib.showContext('menufaz'..job)
-end
-
-RegisterNetEvent('modificafaz', function(data)
-    ListaFazs(data)
-end)
-
-ListaFazs = function(data)
-    local elementi = {}
-    for k,v in pairs(data) do 
-        table.insert(elementi, {
-            title = v.label,
-            description = 'Job: ' .. v.job,
-            icon = 'fa-briefcase',
-            iconColor = Config.IconColor,
-            onSelect = function()
-                ApriMenu(v.label, v.job, true, k)
-            end
-        })
-    end
-    
-    lib.registerContext({
-        id = 'lista',
-        title = locale('titleeditjob'),
-        canClose = true,
-        options = elementi
-    })
-    
-    lib.showContext('lista')
-end
-
-RegisterNetEvent('creafazione', function()
-    local input = lib.inputDialog(locale('nomefaz'), {locale('nomefaz2'), locale('nomefaz3')})
-    if not input then return end
-    ApriMenu(input[1], input[2], false, false)
-end)
-
--- INV
-function MenuGarage()
-    local invOptions = {}
-    
-    -- Add existing inventories
-    for idx, inv in ipairs(datafaz.inv) do
-        if inv.nomedeposito then -- Only add actual inventories
-            table.insert(invOptions, {
-                title = inv.label or inv.nomedeposito,
-                icon = 'fa-solid fa-box',
-                iconColor = Config.IconColor,
-                description = string.format('Slots: %s | Weight: %skg | Grade: %s', inv.slots, inv.peso/1000, inv.grado),
-                onSelect = function()
-                    local alert = lib.alertDialog({
-                        header = locale('deleteinv'),
-                        content = locale('deleteinv2'),
-                        centered = false,
-                        cancel = true
-                    })
-                    if alert == 'confirm' then
-                        table.remove(datafaz.inv, idx)
-                        Notify(locale('confirmremove'))
-                    else
-                        Notify(locale('mantenutolist'))
+        print('[hPoslovi] Loading job data from database: ' .. job)
+        lib.callback('hPoslovi:server:getAllJobs', false, function(data)
+            for k,v in pairs(data) do 
+                if v.job == job then 
+                    datafaz = v
+                    old = k
+                    -- Ensure garage structure exists
+                    if not datafaz.garage then
+                        datafaz.garage = { veicoli = {} }
                     end
-                    MenuGarage()
+                    print('[hPoslovi] Loaded job data for: ' .. job)
+                    
+                    -- Now open the menu
+                    OpenJobEditMenu(label, job, modifica)
+                    break
                 end
-            })
-        end
-    end
-    
-    -- Add "Add Inventory" button
-    table.insert(invOptions, {
-        title = locale('agginv'),
-        icon = 'fa-plus',
-        iconColor = Config.IconColor,
-        description = locale('invdesc'),
-        onSelect = function()
-            local input = lib.inputDialog(locale('impostazionidep'), {
-                locale('nomedep'),
-                locale('pesodep'),
-                locale('slots'),
-                locale('gradomin')
-            })
+            end
+        end)
+    else
+        -- Creating new job - initialize datafaz
+        datafaz = {
+            job = job,
+            label = label,
+            bossmenu = {},
+            garage = {},
+            inv = {},
+            gradi = {}
+        }
         
-            if not input then 
-                MenuGarage()
-                return 
+        -- Open menu immediately for new jobs
+        OpenJobEditMenu(label, job, modifica)
+    end
+end
+
+function OpenJobEditMenu(label, job, modifica)
+
+    local opt = {
+        {label = locale('bossmenu'), description = locale('bossmenudesc'), icon = 'user-tie', iconColor = Config.IconColor},
+        {label = locale('inv'), description = locale('inv2'), icon = 'cart-flatbed', iconColor = Config.IconColor},
+        {label = locale('camerino'), description = locale('descamerino'), icon = 'shirt', iconColor = Config.IconColor},
+        {label = locale('garage'), description = locale('garage2'), icon = 'warehouse', iconColor = Config.IconColor},
+        {label = locale('gradi'), description = locale('gradi2'), icon = 'crown', iconColor = Config.IconColor},
+        {label = locale('conferma'), description = locale('conferma2'), icon = 'circle-check', iconColor = '#00FF00'},
+    }
+    
+    if modifica then
+        table.insert(opt, {
+            label = locale('deletejob'), 
+            description = locale('deletejob2'), 
+            icon = 'trash', 
+            iconColor = '#FF0000',
+        })
+    end
+
+    lib.registerMenu({
+        id = 'menufaz_'..job,
+        title = locale('fazione').." "..label,
+        position = Config.MenuPosition or 'top-right',
+        options = opt
+    }, function(selected, scrollIndex, args)
+        if selected == 1 then
+            -- Boss Menu
+            local i = lib.inputDialog(locale('dialogboss1'), { locale('dialogboss2')})
+            if not i then return end
+            if not tonumber(i[1]) then Notify(locale('requirednumber')) return end
+            
+            datafaz.bossmenu.gradoboss = tonumber(i[1])
+            
+            if lib.alertDialog({header = locale('confirmpos'), content = locale('confirmpos2'), centered = true, cancel = true}) == 'confirm' then
+                datafaz.bossmenu.pos = GetEntityCoords(PlayerPedId())
+                Notify(locale('cofirmnotif'))
+            end
+            OpenJobEditMenu(label, job, modifica)  -- Reopen menu
+        elseif selected == 2 then
+            -- Inventory
+            MenuInv()
+        elseif selected == 3 then
+            -- Wardrobe
+            if lib.alertDialog({header = locale('confirmpos'), content = locale('confirmpos2'), centered = true, cancel = true}) == 'confirm' then
+                datafaz.camerino = GetEntityCoords(PlayerPedId())
+                Notify(locale('cofirmnotif'))
+            end
+            OpenJobEditMenu(label, job, modifica)  -- Reopen menu
+        elseif selected == 4 then
+            -- Garage
+            MenuGarageSettings()
+        elseif selected == 5 then
+            -- Grades
+            MenuGradi()
+        elseif selected == 6 then
+            -- Confirm
+            if #datafaz.gradi == 0 then 
+                Notify(locale('notgradesnot'))
+                datafaz.gradi = Config.IfNotGrades
             end
             
-            if tonumber(input[2]) and tonumber(input[3]) and tonumber(input[4]) then 
+            print('[hPoslovi] Sending job data to server: ' .. datafaz.job .. ' (isModifying: ' .. tostring(isModifying) .. ')')
+            TriggerServerEvent('hPoslovi:server:createOrUpdateJob', datafaz, isModifying)
+            datafaz = {}
+            isModifying = false
+            old = nil
+            lib.hideMenu(true)
+        elseif selected == 7 and modifica then
+            -- Delete Job
+            TriggerServerEvent('hPoslovi:server:deleteJob', datafaz.job)
+            datafaz = {}
+            isModifying = false
+            old = nil
+            lib.hideMenu(true)
+        end
+    end)
+    lib.showMenu('menufaz_'..job)
+end
+
+-- INVENTORY SETTINGS
+function MenuInv()
+    local elements = {}
+    
+    -- Add existing
+    for i, inv in ipairs(datafaz.inv) do
+        table.insert(elements, {
+            label = inv.label,
+            description = "Slots: "..inv.slots.." | Grade: "..inv.grado,
+            icon = 'box',
+            args = {index = i}
+        })
+    end
+
+    -- Add New Button
+    table.insert(elements, {
+        label = locale('agginv'),
+        icon = 'plus',
+    })
+
+    lib.registerMenu({
+        id = 'menu_inv',
+        title = locale('invtitle'),
+        position = Config.MenuPosition or 'top-right',
+        options = elements,
+        onClose = function()
+            OpenJobEditMenu(datafaz.label, datafaz.job, isModifying)
+        end
+    }, function(selected, scrollIndex, args)
+        local option = elements[selected]
+        if option.args and option.args.index then
+            -- Delete inventory
+            if lib.alertDialog({header = locale('deleteinv'), content = locale('deleteinv2'), centered = true, cancel = true}) == 'confirm' then
+                table.remove(datafaz.inv, option.args.index)
+                Notify(locale('confirmremove'))
+                MenuInv()
+            end
+        elseif option.label == locale('agginv') then
+            -- Add new inventory
+            local input = lib.inputDialog(locale('impostazionidep'), {
+                {type = 'input', label = locale('nomedep'), required = true}, 
+                {type = 'number', label = locale('pesodep'), required = true}, 
+                {type = 'number', label = locale('slots'), required = true}, 
+                {type = 'number', label = locale('gradomin'), required = true}
+            })
+            
+            if input then
                 table.insert(datafaz.inv, {
                     pos = GetEntityCoords(PlayerPedId()),
                     nomedeposito = input[1],
-                    peso = tonumber(input[2]) * 1000,
+                    peso = input[2] * 1000,
                     slots = input[3],
                     grado = input[4],
                     label = input[1], 
-                    icon = 'fa-solid fa-box', 
-                    iconColor = Config.IconColor
                 })
-                Notify('Inventory added successfully!')
-            else
-                Notify(locale('compile'))
+                MenuInv()
             end
-            MenuGarage()
         end
-    })
-    
-    lib.registerContext({
-        id = 'inv_menu',
-        title = locale('invtitle'),
-        menu = 'menufaz'..datafaz.job,
-        canClose = true,
-        options = invOptions
-    })
-    
-    lib.showContext('inv_menu')
+    end)
+    lib.showMenu('menu_inv')
 end
 
--- GARAGE 
-function MenuGarageg()
-    local garageOptions = {
-        {
-            title = locale('garagemenuritir'),
-            icon = 'fa-map-pin',
-            iconColor = Config.IconColor,
-            description = datafaz.garage.pos1 and 'Position set' or 'Not configured',
-            onSelect = function()
-                local alert = lib.alertDialog({
-                    header = locale('confirmpos'),
-                    content = locale('confirmpos2'),
-                    centered = true,
-                    cancel = true
-                })
-                if alert == 'confirm' then
-                    datafaz.garage.pos1 = GetEntityCoords(PlayerPedId())
-                    Notify(locale('cofirmnotif'))
-                else
-                    Notify(locale('cancelnotif'))
-                end
-                MenuGarageg()
-            end
-        },
-        {
-            title = locale('garagemenuspawn'),
-            icon = 'fa-map-pin',
-            iconColor = Config.IconColor,
-            description = datafaz.garage.pos2 and 'Position set' or 'Not configured',
-            onSelect = function()
-                local alert = lib.alertDialog({
-                    header = locale('confirmpos'),
-                    content = locale('confirmpos2'),
-                    centered = true,
-                    cancel = true
-                })
-                if alert == 'confirm' then
-                    datafaz.garage.pos2 = GetEntityCoords(PlayerPedId())
-                    datafaz.garage.heading = GetEntityHeading(PlayerPedId())
-                    Notify(locale('cofirmnotif'))
-                else
-                    Notify(locale('cancelnotif'))
-                end
-                MenuGarageg()
-            end
-        },
-        {
-            title = locale('garagemenulist'),
-            icon = 'fa-list',
-            iconColor = Config.IconColor,
-            description = string.format('%d vehicles configured', #datafaz.garage.veicoli),
-            onSelect = function()
-                MenuAddAuto()
-            end
-        }
-    }
-    
-    lib.registerContext({
-        id = 'garage_settings',
+-- GARAGE SETTINGS MENU - IMPROVED
+function MenuGarageSettings()
+    lib.registerMenu({
+        id = 'menu_garage_settings',
         title = locale('garagemenu'),
-        menu = 'menufaz'..datafaz.job,
-        canClose = true,
-        options = garageOptions
-    })
-    
-    lib.showContext('garage_settings')
-end
-
-MenuGradi = function()
-    local gradeOptions = {}
-    
-    -- Add existing grades
-    for idx, grade in ipairs(datafaz.gradi) do
-        if grade.name then -- Only add actual grades
-            table.insert(gradeOptions, {
-                title = grade.label,
-                icon = 'fa-user',
-                iconColor = Config.IconColor,
-                description = string.format('Name: %s | Salary: $%s', grade.name, grade.salary),
-                onSelect = function()
-                    local alert = lib.alertDialog({
-                        header = locale('deletegrade'),
-                        content = locale('gradeconfirm'),
-                        centered = false,
-                        cancel = true
-                    })
-                    if alert == 'confirm' then
-                        table.remove(datafaz.gradi, idx)
-                        Notify(locale('confirmremove'))
-                    else
-                        Notify(locale('tenggrado'))
-                    end
-                    Wait(300)
-                    MenuGradi()
-                end
-            })
+        position = Config.MenuPosition or 'top-right',
+        options = {
+            {
+                label = locale('garagemenuritir'), 
+                icon = 'map-pin', 
+            },
+            {
+                label = locale('garagemenuspawn'), 
+                icon = 'car-side', 
+            },
+            {
+                label = locale('garagemenulist'), 
+                icon = 'list', 
+                description = 'Manage Vehicles',
+            },
+        },
+        onClose = function()
+            OpenJobEditMenu(datafaz.label, datafaz.job, isModifying)
         end
-    end
-    
-    -- Add "Add Grade" button
-    table.insert(gradeOptions, {
-        title = locale('addgrade'),
-        description = locale('gradedesc'),
-        icon = 'fa-plus',
-        iconColor = Config.IconColor,
-        onSelect = function()
-            local i = lib.inputDialog(locale('putname'), {
-                locale('namegrade'),
-                locale('labelgrade'),
-                locale('salary')
-            })
-            
-            if i and tonumber(i[3]) then
-                table.insert(datafaz.gradi, {
-                    grade = #datafaz.gradi,
-                    name = string.lower(i[1]),
-                    label = i[2],
-                    salary = tonumber(i[3]),
-                    icon = 'fa-user',
-                    iconColor = Config.IconColor
-                })
-                Notify('Grade added successfully!')
-            else
-                Notify(locale('compile'))
+    }, function(selected, scrollIndex, args)
+        if selected == 1 then
+            -- Set pickup location
+            if lib.alertDialog({header = locale('confirmpos'), content = locale('confirmpos2'), centered = true, cancel = true}) == 'confirm' then
+                if not datafaz.garage then datafaz.garage = {} end
+                datafaz.garage.pos1 = GetEntityCoords(PlayerPedId())
+                Notify(locale('cofirmnotif'))
             end
-            Wait(300)
-            MenuGradi()
+            MenuGarageSettings()
+        elseif selected == 2 then
+            -- Set spawn location
+            if lib.alertDialog({header = locale('confirmpos'), content = locale('confirmpos2'), centered = true, cancel = true}) == 'confirm' then
+                if not datafaz.garage then datafaz.garage = {} end
+                datafaz.garage.pos2 = GetEntityCoords(PlayerPedId())
+                datafaz.garage.heading = GetEntityHeading(PlayerPedId())
+                Notify(locale('cofirmnotif'))
+            end
+            MenuGarageSettings()
+        elseif selected == 3 then
+            -- Vehicle list
+            MenuAddAuto()
         end
-    })
-    
-    lib.registerContext({
-        id = 'gradi',
-        title = 'Gradi',
-        menu = 'menufaz'..datafaz.job,
-        canClose = true,
-        options = gradeOptions
-    })
-    
-    lib.showContext('gradi')
+    end)
+    lib.showMenu('menu_garage_settings')
 end
 
-RegisterNetEvent('creafaz-cl', function(data)
-    CreaMark(data)
+-- VEHICLE LIST (EDIT MODE) - DATABASE VERSION
+function MenuAddAuto()
+    -- Load vehicles from database
+    lib.callback('hPoslovi:server:getJobVehicles', false, function(vehicles)
+        local elements = {}
+
+        -- Existing Vehicles from database
+        if vehicles and #vehicles > 0 then
+            for i, veh in ipairs(vehicles) do
+                table.insert(elements, {
+                    label = veh.label,
+                    description = veh.model .. " | Grade: " .. (veh.min_grade or 0),
+                    icon = 'car',
+                    args = {id = veh.id, index = i}
+                })
+            end
+        end
+
+        -- Add New Vehicle
+        table.insert(elements, {
+            label = locale('addvehicle'),
+            description = locale('addvehdesc'),
+            icon = 'plus',
+        })
+
+        lib.registerMenu({
+            id = 'menu_veh_list',
+            title = 'Garage Vehicles',
+            position = Config.MenuPosition or 'top-right',
+            options = elements,
+            onClose = function()
+                MenuGarageSettings()
+            end
+        }, function(selected, scrollIndex, args)
+            local option = elements[selected]
+            
+            if option.args and option.args.id then
+                -- Delete vehicle
+                if lib.alertDialog({header = locale('deleteveh'), content = locale('deleteveh2'), centered = true, cancel = true}) == 'confirm' then
+                    TriggerServerEvent('hPoslovi:server:deleteVehicle', option.args.id, datafaz.job)
+                    Wait(300)
+                    MenuAddAuto() -- Refresh menu
+                end
+            elseif option.label == locale('addvehicle') then
+                -- Add new vehicle
+                local input = lib.inputDialog('VEHICLE SETTINGS', {
+                    {type = 'input', label = locale('label'), required = true},
+                    {type = 'input', label = locale('modelmaiusc'), required = true},
+                    {type = 'color', label = locale('color'), default = "#FFFFFF"},
+                    {type = 'checkbox', label = locale('fullkit')},
+                    {type = 'input', label = locale('plate')},
+                    {type = 'number', label = locale('gradomin'), default = 0}
+                })
+                
+                if input then
+                    -- Validate model name
+                    local modelName = string.upper(input[2])
+                    
+                    -- Color Conversion
+                    local rgbColor = HexToRGB(input[3])
+
+                    local newVehicle = {
+                        label = input[1],
+                        model = modelName,
+                        fullkit = input[4],
+                        plate = input[5],
+                        min_grade = input[6],
+                        color_r = rgbColor.r,
+                        color_g = rgbColor.g,
+                        color_b = rgbColor.b
+                    }
+                    
+                    TriggerServerEvent('hPoslovi:server:addVehicle', datafaz.job, newVehicle)
+                    Wait(300)
+                    MenuAddAuto() -- Refresh menu
+                end
+            end
+        end)
+        lib.showMenu('menu_veh_list')
+    end, datafaz.job)
+end
+
+-- GRADES MENU
+function MenuGradi()
+    local elements = {}
+    
+    for i, grade in ipairs(datafaz.gradi) do
+        table.insert(elements, {
+            label = grade.label,
+            description = "Salary: $"..grade.salary,
+            icon = 'user',
+            args = {index = i}
+        })
+    end
+
+    table.insert(elements, {
+        label = locale('addgrade'),
+        icon = 'plus',
+    })
+
+    lib.registerMenu({
+        id = 'menu_gradi',
+        title = 'Grades Management',
+        position = Config.MenuPosition or 'top-right',
+        options = elements,
+        onClose = function()
+            OpenJobEditMenu(datafaz.label, datafaz.job, isModifying)
+        end
+    }, function(selected, scrollIndex, args)
+        local option = elements[selected]
+        
+        if option.args and option.args.index then
+            -- Delete grade
+            if lib.alertDialog({header = locale('deletegrade'), content = locale('gradeconfirm'), centered = true, cancel = true}) == 'confirm' then
+                table.remove(datafaz.gradi, option.args.index)
+                Notify(locale('confirmremove'))
+                MenuGradi()
+            end
+        elseif option.label == locale('addgrade') then
+            -- Add new grade
+            local i = lib.inputDialog(locale('putname'), {
+                {type = 'input', label = locale('namegrade'), required = true}, 
+                {type = 'input', label = locale('labelgrade'), required = true}, 
+                {type = 'number', label = locale('salary'), required = true}
+            })
+            if i then
+                table.insert(datafaz.gradi, {
+                    grade = #datafaz.gradi, 
+                    name = string.lower(i[1]), 
+                    label = i[2], 
+                    salary = tonumber(i[3]), 
+                })
+                MenuGradi()
+            end
+        end
+    end)
+    lib.showMenu('menu_gradi')
+end
+
+-- EVENTS
+RegisterNetEvent('hPoslovi:client:openEditMenu', function()
+    lib.callback('hPoslovi:server:getAllJobs', false, function(data)
+        if not data or #data == 0 then
+            Notify('No jobs found in database!')
+            return
+        end
+        
+        local elements = {}
+        for k,v in pairs(data) do 
+            table.insert(elements, {
+                label = v.label, 
+                description = v.job,
+                args = {job = v.job, index = k}
+            })
+        end
+        
+        lib.registerMenu({
+            id = 'list_jobs',
+            title = locale('titleeditjob'),
+            position = Config.MenuPosition or 'top-right',
+            options = elements
+        }, function(selected, scrollIndex, args)
+            local option = elements[selected]
+            if option.args then
+                ApriMenu(option.label, option.args.job, true, option.args.index)
+            end
+        end)
+        lib.showMenu('list_jobs')
+    end)
 end)
 
-RegisterNetEvent('eliminafaz-cl', function(data)
-    TriggerEvent('ox_gridsystem:unregisterMarker', 'bossmenu'..data.job)
-    TriggerEvent('ox_gridsystem:unregisterMarker', 'camerino'..data.job)
-    TriggerEvent('ox_gridsystem:unregisterMarker', 'garage1'..data.job)
-    TriggerEvent('ox_gridsystem:unregisterMarker', 'garage2'..data.job)
-    for k,v in pairs(data.inv) do
-        TriggerEvent('ox_gridsystem:unregisterMarker', 'inv'..k)
+RegisterNetEvent('hPoslovi:client:openCreateMenu', function()
+    local input = lib.inputDialog(locale('nomefaz'), {locale('nomefaz2'), locale('nomefaz3')})
+    if input then
+        ApriMenu(input[1], input[2], false, false)
     end
+end)
+
+RegisterNetEvent('hPoslovi:client:refreshJobs', function()
+    print('[hPoslovi] Refreshing markers from database...')
+    lib.callback('hPoslovi:server:getAllJobs', false, function(data)
+        if data then
+            CreaMark(data)
+        end
+    end)
 end)
 
 CreateThread(function()
-    local jsn = LoadResourceFile(GetCurrentResourceName(), 'config/data.json')
-    local dcd = json.decode(jsn)
-    CreaMark(dcd)
+    Wait(2000) -- Wait for server to load
+    print('[hPoslovi] Loading markers from database...')
+    lib.callback('hPoslovi:server:getAllJobs', false, function(data)
+        if data then
+            CreaMark(data)
+        else
+            print('[hPoslovi] No jobs found in database')
+        end
+    end)
 end)
 
 function CreaMark(data)
+    if not data then 
+        print('[hPoslovi] ERROR: CreaMark called with nil data')
+        return 
+    end
+    
+    print('[hPoslovi] Creating markers for ' .. #data .. ' jobs')
+    
     for k,v in pairs(data) do
+        print('[hPoslovi] Processing job: ' .. (v.job or 'unknown'))
+        
+        -- Unregister Old
         TriggerEvent('ox_gridsystem:unregisterMarker', 'bossmenu'..v.job)
         TriggerEvent('ox_gridsystem:unregisterMarker', 'camerino'..v.job)
         TriggerEvent('ox_gridsystem:unregisterMarker', 'garage1'..v.job)
         TriggerEvent('ox_gridsystem:unregisterMarker', 'garage2'..v.job)
-        Wait(500)
-        if v.bossmenu.pos then
+
+        Wait(100) 
+
+        -- Register New
+        if v.bossmenu and v.bossmenu.pos then
+            print('[hPoslovi] Registering boss menu marker for ' .. v.job)
             TriggerEvent('ox_gridsystem:registerMarker', {
                 name = 'bossmenu'..v.job,
                 pos = vector3(v.bossmenu.pos.x, v.bossmenu.pos.y, v.bossmenu.pos.z),
@@ -773,31 +846,37 @@ function CreaMark(data)
                 end
             })
         end
-        for a,b in pairs(v.inv) do
-            if a then
-                TriggerEvent('ox_gridsystem:unregisterMarker', 'inv'..a)
-                Wait(500)
-                TriggerEvent('ox_gridsystem:registerMarker', {
-                    name = 'inv'..a,
-                    pos = vector3(b.pos.x, b.pos.y, b.pos.z),
-                    size = Config.MarkerSize,
-                    scale = Config.MarkerSize,
-                    type = Config.MarkerType,
-                    drawDistance = Config.MarkerDrawDistance,
-                    interactDistance = Config.InteractDistance,
-                    color = Config.MarkerColor,
-                    msg = locale('textuideposito'),
-                    permission = v.job,
-                    jobGrade = tonumber(b.grado),
-                    texture = Config.InventoryMarker,  
-                    textureDict = Config.MarkerYTD,
-                    action = function()
-                        exports.ox_inventory:openInventory('stash', v.job..a)
-                    end
-                })
+
+        if v.inv then
+            for a,b in pairs(v.inv) do
+                if a and b.pos then
+                    TriggerEvent('ox_gridsystem:unregisterMarker', 'inv'..a)
+                    Wait(100)
+                    print('[hPoslovi] Registering inventory marker ' .. a .. ' for ' .. v.job)
+                    TriggerEvent('ox_gridsystem:registerMarker', {
+                        name = 'inv'..a,
+                        pos = vector3(b.pos.x, b.pos.y, b.pos.z),
+                        size = Config.MarkerSize,
+                        scale = Config.MarkerSize,
+                        type = Config.MarkerType,
+                        drawDistance = Config.MarkerDrawDistance,
+                        interactDistance = Config.InteractDistance,
+                        color = Config.MarkerColor,
+                        msg = locale('textuideposito'),
+                        permission = v.job,
+                        jobGrade = tonumber(b.grado),
+                        texture = Config.InventoryMarker,  
+                        textureDict = Config.MarkerYTD,
+                        action = function()
+                            exports.ox_inventory:openInventory('stash', v.job..a)
+                        end
+                    })
+                end
             end
         end
+
         if v.camerino then
+            print('[hPoslovi] Registering wardrobe marker for ' .. v.job)
             TriggerEvent('ox_gridsystem:registerMarker', {
                 name = 'camerino'..v.job,
                 pos = vector3(v.camerino.x, v.camerino.y, v.camerino.z),
@@ -817,7 +896,9 @@ function CreaMark(data)
                 end
             })
         end
-        if v.garage.pos1 then
+
+        if v.garage and v.garage.pos1 then
+            print('[hPoslovi] Registering garage markers for ' .. v.job)
             TriggerEvent('ox_gridsystem:registerMarker', {
                 name = 'garage1'..v.job,
                 pos = vector3(v.garage.pos1.x, v.garage.pos1.y, v.garage.pos1.z),
@@ -836,35 +917,48 @@ function CreaMark(data)
                     ApriGarage(data, v.job)
                 end,
                 onExit = function()
-                    lib.hideContext()
+                    lib.hideMenu(true)
                 end
             })
-            TriggerEvent('ox_gridsystem:registerMarker', {
-                name = 'garage2'..v.job,
-                pos = vector3(v.garage.pos2.x, v.garage.pos2.y, v.garage.pos2.z),
-                size = Config.MarkerSize,
-                scale = Config.MarkerSize,
-                type = Config.MarkerType,
-                drawDistance = Config.MarkerDrawDistance,
-                interactDistance = Config.InteractDistance,
-                color = Config.MarkerColor,
-                msg = locale('texuigarage2'),
-                permission = v.job,
-                jobGrade = 0,
-                texture = Config.Vehicle2Marker,  
-                textureDict = Config.MarkerYTD,
-                action = function()
-                    if IsPedInAnyVehicle(PlayerPedId()) then
-                        ESX.Game.DeleteVehicle(GetVehiclePedIsIn(PlayerPedId()))
-                        Notify(locale('vehdeposited'))
-                    else
-                        Notify(locale('notveh'))
+            
+            if v.garage.pos2 then
+                TriggerEvent('ox_gridsystem:registerMarker', {
+                    name = 'garage2'..v.job,
+                    pos = vector3(v.garage.pos2.x, v.garage.pos2.y, v.garage.pos2.z),
+                    size = Config.MarkerSize,
+                    scale = Config.MarkerSize,
+                    type = Config.MarkerType,
+                    drawDistance = Config.MarkerDrawDistance,
+                    interactDistance = Config.InteractDistance,
+                    color = Config.MarkerColor,
+                    msg = locale('texuigarage2'),
+                    permission = v.job,
+                    jobGrade = 0,
+                    texture = Config.Vehicle2Marker,  
+                    textureDict = Config.MarkerYTD,
+                    action = function()
+                        if IsPedInAnyVehicle(PlayerPedId()) then
+                            ESX.Game.DeleteVehicle(GetVehiclePedIsIn(PlayerPedId()))
+                            Notify(locale('vehdeposited'))
+                        else
+                            Notify(locale('notveh'))
+                        end
+                    end,
+                    onExit = function()
+                        lib.hideMenu(true)
                     end
-                end,
-                onExit = function()
-                    lib.hideContext()
-                end
-            })
+                })
+            end
         end
     end
+    
+    print('[hPoslovi] Marker creation complete')
 end
+-- Refresh vehicle list when updated
+RegisterNetEvent('hPoslovi:client:refreshVehicles', function(jobName)
+    -- If the menu is open for this job, refresh it
+    if datafaz and datafaz.job == jobName then
+        Wait(100)
+        -- Menu will auto-refresh when reopened
+    end
+end)
