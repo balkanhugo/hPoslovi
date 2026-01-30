@@ -1,27 +1,37 @@
 -- ========================================
--- hPoslovi Server - FULL DATABASE VERSION - FIXED
+-- hPoslovi Server - V1.0 Release
+-- ESX Society + Illenium Appearance Only
 -- ========================================
 
--- Store job outfits in memory (loaded from database)
 local jobOutfits = {}
 
--- Initialize on resource start
+-- Helper function for debug logging
+local function DebugLog(message)
+    if Config.Debug then
+        print('[hPoslovi DEBUG] ' .. message)
+    end
+end
+
+-- ========================================
+-- INITIALIZATION
+-- ========================================
+
 CreateThread(function()
-    Wait(1000) -- Wait for database connection
+    Wait(1000)
     
-    print('[hPoslovi] Loading jobs from database...')
+    DebugLog('Loading jobs from database...')
     local jobs = MySQL.query.await('SELECT * FROM hposlovi_jobs', {})
     
     if jobs then
         for _, job in ipairs(jobs) do
-            print('[hPoslovi] Loading inventories for: ' .. job.job_name)
+            DebugLog('Loading inventories for: ' .. job.job_name)
             
             -- Register inventories
             local inventories = MySQL.query.await('SELECT * FROM hposlovi_inventories WHERE job_name = ?', {job.job_name})
             if inventories then
                 for _, inv in ipairs(inventories) do
                     exports.ox_inventory:RegisterStash(job.job_name .. inv.inventory_id, inv.label, tonumber(inv.slots), inv.max_weight, false)
-                    print('[hPoslovi] Registered stash: ' .. job.job_name .. inv.inventory_id)
+                    DebugLog('Registered stash: ' .. job.job_name .. inv.inventory_id)
                 end
             end
             
@@ -32,7 +42,7 @@ CreateThread(function()
                 for _, outfit in ipairs(outfits) do
                     jobOutfits[job.job_name][outfit.outfit_name] = json.decode(outfit.outfit_data)
                 end
-                print('[hPoslovi] Loaded ' .. #outfits .. ' outfits for ' .. job.job_name)
+                DebugLog('Loaded ' .. #outfits .. ' outfits for ' .. job.job_name)
             end
         end
     end
@@ -44,12 +54,21 @@ end)
 -- OUTFIT SYSTEM
 -- ========================================
 
--- Save outfit for job (boss only)
+-- Get boss grade for a job
+lib.callback.register('hPoslovi:server:getBossGrade', function(source, jobName)
+    local bossMenu = MySQL.single.await('SELECT extra_data FROM hposlovi_positions WHERE job_name = ? AND position_type = "bossmenu" LIMIT 1', {jobName})
+    if bossMenu and bossMenu.extra_data then
+        local extra = json.decode(bossMenu.extra_data)
+        return extra.boss_grade or 0
+    end
+    return nil
+end)
+
+-- Save outfit for job (sboss grade or higher only)
 RegisterNetEvent('hPoslovi:server:saveJobOutfit', function(jobName, outfitName, outfitData)
     local xPlayer = ESX.GetPlayerFromId(source)
     if not xPlayer then return end
     
-    -- Check if player has the job
     if xPlayer.job.name ~= jobName then
         xPlayer.showNotification('You are not part of this job!')
         return
@@ -59,7 +78,7 @@ RegisterNetEvent('hPoslovi:server:saveJobOutfit', function(jobName, outfitName, 
     local bossMenu = MySQL.single.await('SELECT extra_data FROM hposlovi_positions WHERE job_name = ? AND position_type = "bossmenu" LIMIT 1', {jobName})
     local bossGrade = bossMenu and json.decode(bossMenu.extra_data).boss_grade or 0
     
-    -- Check if player has sufficient grade
+    -- Check if player has sufficient grade (>= boss grade)
     if xPlayer.job.grade < bossGrade then
         xPlayer.showNotification('You need to be at least grade ' .. bossGrade .. ' to save outfits!')
         return
@@ -78,14 +97,14 @@ RegisterNetEvent('hPoslovi:server:saveJobOutfit', function(jobName, outfitName, 
     jobOutfits[jobName][outfitName] = outfitData
     
     xPlayer.showNotification('Outfit "' .. outfitName .. '" saved successfully!')
+    DebugLog('Outfit saved: ' .. outfitName .. ' for ' .. jobName)
 end)
 
--- Get available outfits for job
+-- Get available outfits for job (everyone can view)
 lib.callback.register('hPoslovi:server:getJobOutfits', function(source, jobName)
     local xPlayer = ESX.GetPlayerFromId(source)
     if not xPlayer then return {} end
     
-    -- Check if player has the job
     if xPlayer.job.name ~= jobName then
         return {}
     end
@@ -93,12 +112,11 @@ lib.callback.register('hPoslovi:server:getJobOutfits', function(source, jobName)
     return jobOutfits[jobName] or {}
 end)
 
--- Delete outfit for job (boss only)
+-- Delete outfit for job (sboss grade or higher only)
 RegisterNetEvent('hPoslovi:server:deleteJobOutfit', function(jobName, outfitName)
     local xPlayer = ESX.GetPlayerFromId(source)
     if not xPlayer then return end
     
-    -- Check if player has the job
     if xPlayer.job.name ~= jobName then
         xPlayer.showNotification('You are not part of this job!')
         return
@@ -108,7 +126,7 @@ RegisterNetEvent('hPoslovi:server:deleteJobOutfit', function(jobName, outfitName
     local bossMenu = MySQL.single.await('SELECT extra_data FROM hposlovi_positions WHERE job_name = ? AND position_type = "bossmenu" LIMIT 1', {jobName})
     local bossGrade = bossMenu and json.decode(bossMenu.extra_data).boss_grade or 0
     
-    -- Check if player has sufficient grade
+    -- Check if player has sufficient grade (>= boss grade)
     if xPlayer.job.grade < bossGrade then
         xPlayer.showNotification('You need to be at least grade ' .. bossGrade .. ' to delete outfits!')
         return
@@ -121,6 +139,7 @@ RegisterNetEvent('hPoslovi:server:deleteJobOutfit', function(jobName, outfitName
     if jobOutfits[jobName] and jobOutfits[jobName][outfitName] then
         jobOutfits[jobName][outfitName] = nil
         xPlayer.showNotification('Outfit "' .. outfitName .. '" deleted successfully!')
+        DebugLog('Outfit deleted: ' .. outfitName .. ' from ' .. jobName)
     end
 end)
 
@@ -132,7 +151,7 @@ RegisterNetEvent('hPoslovi:server:createOrUpdateJob', function(jobData, isModify
     local xPlayer = ESX.GetPlayerFromId(source)
     if not CheckPerms(source) then return end
     
-    print('[hPoslovi] ' .. (isModifying and 'Updating' or 'Creating') .. ' job: ' .. jobData.job)
+    DebugLog((isModifying and 'Updating' or 'Creating') .. ' job: ' .. jobData.job)
     
     -- Create/update job in ESX
     MySQL.Async.execute('DELETE FROM jobs WHERE name = @job', { ['@job'] = jobData.job })
@@ -146,21 +165,23 @@ RegisterNetEvent('hPoslovi:server:createOrUpdateJob', function(jobData, isModify
     end
     
     Wait(500)
+    
+    -- REFRESH JOBS AFTER CREATION/MODIFICATION
     ESX.RefreshJobs()
+    DebugLog('Jobs refreshed after ' .. (isModifying and 'update' or 'creation'))
     
     if Config.AutoSetJob then
         xPlayer.setJob(jobData.job, 0)
     end
     
     -- Save to hPoslovi database
-    -- 1. Create/update job entry
     if isModifying then
         MySQL.query.await('UPDATE hposlovi_jobs SET job_label = ? WHERE job_name = ?', {jobData.label, jobData.job})
     else
         MySQL.insert.await('INSERT INTO hposlovi_jobs (job_name, job_label) VALUES (?, ?)', {jobData.job, jobData.label})
     end
     
-    -- 2. Delete old positions and save new ones
+    -- Delete old positions and save new ones
     MySQL.query.await('DELETE FROM hposlovi_positions WHERE job_name = ?', {jobData.job})
     
     -- Boss menu position
@@ -192,67 +213,66 @@ RegisterNetEvent('hPoslovi:server:createOrUpdateJob', function(jobData, isModify
         end
     end
     
-    -- 3. Delete old inventories and save new ones
+    -- Delete old inventories and save new ones
     MySQL.query.await('DELETE FROM hposlovi_inventories WHERE job_name = ?', {jobData.job})
     
     if jobData.inv then
         for idx, inv in ipairs(jobData.inv) do
-            -- Save inventory config
-            MySQL.insert.await('INSERT INTO hposlovi_inventories (job_name, inventory_id, label, slots, max_weight, min_grade, x, y, z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', {
-                jobData.job,
-                tostring(idx),
-                inv.label or inv.nomedeposito,
-                inv.slots,
-                inv.peso,
-                inv.grado or 0,
-                inv.pos.x, inv.pos.y, inv.pos.z
-            })
-            
-            -- Register stash
-            exports.ox_inventory:RegisterStash(jobData.job .. idx, inv.label or inv.nomedeposito, tonumber(inv.slots), inv.peso, false)
+            if inv.label and inv.slots and inv.peso then
+                MySQL.insert.await('INSERT INTO hposlovi_inventories (job_name, inventory_id, label, slots, max_weight, min_grade) VALUES (?, ?, ?, ?, ?, ?)', {
+                    jobData.job, tostring(idx), inv.label, tonumber(inv.slots), tonumber(inv.peso), tonumber(inv.grado) or 0
+                })
+                
+                if inv.pos then
+                    local extra = json.encode({inventory_id = tostring(idx)})
+                    MySQL.insert.await('INSERT INTO hposlovi_positions (job_name, position_type, position_id, x, y, z, extra_data) VALUES (?, ?, ?, ?, ?, ?, ?)', {
+                        jobData.job, 'inventory', tostring(idx), inv.pos.x, inv.pos.y, inv.pos.z, extra
+                    })
+                end
+                
+                exports.ox_inventory:RegisterStash(jobData.job .. tostring(idx), inv.label, tonumber(inv.slots), tonumber(inv.peso), false)
+                DebugLog('Registered inventory: ' .. jobData.job .. tostring(idx))
+            end
         end
     end
     
-    -- Initialize outfit storage
-    if not jobOutfits[jobData.job] then
-        jobOutfits[jobData.job] = {}
-    end
-    
-    print('[hPoslovi] Job saved successfully: ' .. jobData.job)
     xPlayer.showNotification('Job ' .. (isModifying and 'updated' or 'created') .. ' successfully!')
+    
+    -- REFRESH MARKERS ON ALL CLIENTS
     TriggerClientEvent('hPoslovi:client:refreshJobs', -1)
+    DebugLog('Markers refreshed on all clients')
 end)
 
--- ========================================
--- JOB DELETION
--- ========================================
-
+-- Delete job
 RegisterNetEvent('hPoslovi:server:deleteJob', function(jobName)
     local xPlayer = ESX.GetPlayerFromId(source)
-    if xPlayer.group == 'user' then return end
-    
-    print('[hPoslovi] Deleting job: ' .. jobName)
+    if not CheckPerms(source) then return end
     
     -- Delete from ESX
     MySQL.Async.execute('DELETE FROM jobs WHERE name = @job', { ['@job'] = jobName })
     MySQL.Async.execute('DELETE FROM job_grades WHERE job_name = @job', { ['@job'] = jobName })
     
-    -- Delete from hPoslovi database (cascades to all related tables)
+    -- Delete from hPoslovi database
     MySQL.query.await('DELETE FROM hposlovi_jobs WHERE job_name = ?', {jobName})
+    MySQL.query.await('DELETE FROM hposlovi_positions WHERE job_name = ?', {jobName})
+    MySQL.query.await('DELETE FROM hposlovi_inventories WHERE job_name = ?', {jobName})
+    MySQL.query.await('DELETE FROM hposlovi_vehicles WHERE job_name = ?', {jobName})
+    MySQL.query.await('DELETE FROM hposlovi_outfits WHERE job_name = ?', {jobName})
     
+    -- Refresh jobs
     Wait(500)
     ESX.RefreshJobs()
     
     -- Clear outfit storage
     jobOutfits[jobName] = nil
     
-    print('[hPoslovi] Job deleted: ' .. jobName)
+    DebugLog('Job deleted: ' .. jobName)
     xPlayer.showNotification('Job deleted successfully!')
     TriggerClientEvent('hPoslovi:client:refreshJobs', -1)
 end)
 
 -- ========================================
--- GET JOB DATA (for editing)
+-- GET JOB DATA
 -- ========================================
 
 lib.callback.register('hPoslovi:server:getAllJobs', function(source)
@@ -327,76 +347,39 @@ lib.callback.register('hPoslovi:server:getAllJobs', function(source)
 end)
 
 -- ========================================
--- VEHICLE SYSTEM - FIXED
+-- VEHICLE SYSTEM
 -- ========================================
 
--- Get all vehicles for a job
 lib.callback.register('hPoslovi:server:getJobVehicles', function(source, jobName)
-    -- Try with job_name first (new schema)
     local vehicles = MySQL.query.await('SELECT * FROM hposlovi_vehicles WHERE job_name = ?', {jobName})
-    
-    -- If that fails or returns empty, try alternative column names
-    if not vehicles or #vehicles == 0 then
-        -- Try with jobname (no underscore)
-        local success, result = pcall(function()
-            return MySQL.query.await('SELECT * FROM hposlovi_vehicles WHERE jobname = ?', {jobName})
-        end)
-        if success and result then
-            vehicles = result
-        end
-    end
-    
     return vehicles or {}
 end)
 
--- Add a vehicle to a job
 RegisterNetEvent('hPoslovi:server:addVehicle', function(jobName, vehicleData)
     local xPlayer = ESX.GetPlayerFromId(source)
     if not CheckPerms(source) then return end
     
-    -- Try inserting with job_name first
-    local success, result = pcall(function()
-        return MySQL.insert.await('INSERT INTO hposlovi_vehicles (job_name, label, model, color_r, color_g, color_b, plate, fullkit, min_grade) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', {
-            jobName,
-            vehicleData.label,
-            vehicleData.model,
-            vehicleData.color_r or 255,
-            vehicleData.color_g or 255,
-            vehicleData.color_b or 255,
-            vehicleData.plate,
-            vehicleData.fullkit and 1 or 0,
-            vehicleData.min_grade or 0
-        })
-    end)
+    local result = MySQL.insert.await('INSERT INTO hposlovi_vehicles (job_name, label, model, color_r, color_g, color_b, plate, fullkit, min_grade) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', {
+        jobName,
+        vehicleData.label,
+        vehicleData.model,
+        vehicleData.color_r or 255,
+        vehicleData.color_g or 255,
+        vehicleData.color_b or 255,
+        vehicleData.plate,
+        vehicleData.fullkit and 1 or 0,
+        vehicleData.min_grade or 0
+    })
     
-    -- If that failed, try with jobname (no underscore)
-    if not success then
-        success, result = pcall(function()
-            return MySQL.insert.await('INSERT INTO hposlovi_vehicles (jobname, label, model, color_r, color_g, color_b, plate, fullkit, min_grade) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', {
-                jobName,
-                vehicleData.label,
-                vehicleData.model,
-                vehicleData.color_r or 255,
-                vehicleData.color_g or 255,
-                vehicleData.color_b or 255,
-                vehicleData.plate,
-                vehicleData.fullkit and 1 or 0,
-                vehicleData.min_grade or 0
-            })
-        end)
-    end
-    
-    if success and result then
-        print('[hPoslovi] Vehicle added: ' .. vehicleData.label .. ' for ' .. jobName)
+    if result then
+        DebugLog('Vehicle added: ' .. vehicleData.label .. ' for ' .. jobName)
         xPlayer.showNotification('Vehicle added successfully!')
         TriggerClientEvent('hPoslovi:client:refreshVehicles', -1, jobName)
     else
-        print('[hPoslovi] Failed to add vehicle - database column mismatch')
-        xPlayer.showNotification('Failed to add vehicle! Check database schema.')
+        xPlayer.showNotification('Failed to add vehicle!')
     end
 end)
 
--- Delete a vehicle
 RegisterNetEvent('hPoslovi:server:deleteVehicle', function(vehicleId, jobName)
     local xPlayer = ESX.GetPlayerFromId(source)
     if not CheckPerms(source) then return end
@@ -404,7 +387,7 @@ RegisterNetEvent('hPoslovi:server:deleteVehicle', function(vehicleId, jobName)
     local result = MySQL.query.await('DELETE FROM hposlovi_vehicles WHERE id = ?', {vehicleId})
     
     if result then
-        print('[hPoslovi] Vehicle deleted: ID ' .. vehicleId)
+        DebugLog('Vehicle deleted: ID ' .. vehicleId)
         xPlayer.showNotification('Vehicle deleted successfully!')
         TriggerClientEvent('hPoslovi:client:refreshVehicles', -1, jobName)
     else
