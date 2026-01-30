@@ -1,80 +1,110 @@
 {
     "fazione": "POSAO:",
-    "nomefaz": "NAZIV POSLA",
+    "nomefaz": "Naziv posla",
     "nomefaz2": "Unesite prikazani naziv posla",
-    "nomefaz3": "Unesite naziv posla za setjob",
+    "nomefaz3": "Unesite naziv posla za setjob naredbu",
     "descnomefaz": "Odaberite za postavljanje naziva posla",
+    
     "bossmenu": "Pozicija Boss izbornika",
-    "bossmenudesc": "Odaberite za postavljanje trenutne pozicije kao lokacije boss izbornika",
+    "bossmenudesc": "Postavite trenutnu poziciju kao lokaciju boss izbornika",
+    
     "inv": "Upravljanje inventarima",
-    "inv2": "Upravljajte inventarima i kreirajte koliko god želite",
+    "inv2": "Upravljajte inventarima i kreirajte više skladišnih točaka",
+    
     "camerino": "Pozicija garderobe",
-    "descamerino": "Odaberite za postavljanje trenutne pozicije kao lokacije garderobe",
+    "descamerino": "Postavite trenutnu poziciju kao lokaciju garderobe",
+    
     "garage": "Upravljanje garažom",
     "garage2": "Upravljajte vozilima i postavkama garaže",
-    "gradi": "Dodaj rangove",
-    "gradi2": "Odaberite za dodavanje rangova posla",
-    "blip": "Blip",
-    "blip2": "Odaberite za kreiranje blipa",
+    
+    "gradi": "Upravljanje rangovima",
+    "gradi2": "Dodajte, uredite ili uklonite rangove posla",
+    
+    "blip": "Blip na karti",
+    "blip2": "Kreirajte blip na karti za ovaj posao",
+    
     "conferma": "Potvrdi",
-    "conferma2": "Odaberite za završetak",
+    "conferma2": "Finaliziraj i spremi promjene",
     "confirmpos": "POTVRDI POZICIJU",
     "confirmpos2": "Jeste li sigurni da želite potvrditi ovu poziciju?",
-    "cofirmnotif": "Potvrdili ste",
-    "cancelnotif": "Niste potvrdili",
+    "cofirmnotif": "Pozicija potvrđena",
+    "cancelnotif": "Pozicija nije potvrđena",
+    
     "impostazionidep": "POSTAVKE SKLADIŠTA",
     "nomedep": "NAZIV SKLADIŠTA",
-    "pesodep": "TEŽINA SKLADIŠTA",
+    "pesodep": "TEŽINA SKLADIŠTA (kg)",
     "slots": "SLOTOVI",
-    "gradomin": "MINIMALNI RANG",
+    "gradomin": "MINIMALNI POTREBNI RANG",
+    
     "deletejob": "Obriši posao",
-    "deletejob2": "Odaberite za brisanje posla",
-    "dialogboss1": "UNESI BOSS RANG",
-    "dialogboss2": "Npr. 1 (označava rang u setjobu)",
+    "deletejob2": "Trajno obriši ovaj posao",
+    
+    "dialogboss1": "UNESI BROJ BOSS RANGA",
+    "dialogboss2": "Primjer: 3 (broj ranga korišten u setjobu)",
     "requirednumber": "Mora biti broj",
-    "notgradesnot": "Rangovi nisu konfigurirani, postavljeni su zadani rangovi",
+    
+    "notgradesnot": "Rangovi nisu konfigurirani - postavljeni su zadani rangovi",
+    
     "titleeditjob": "Uredi posao",
-    "agginv": "DODAJ SKLADIŠTA",
-    "invdesc": "Inventar će biti postavljen na vašoj trenutnoj poziciji",
+    
+    "agginv": "DODAJ SKLADIŠTE",
+    "invdesc": "Skladište će biti postavljeno na vašoj trenutnoj poziciji",
     "invtitle": "IZBORNIK SKLADIŠTA",
+    
     "compile": "Molimo ispravno ispunite sva polja",
-    "deleteinv": "Obriši inventar",
-    "deleteinv2": "Želite li ukloniti ovaj inventar s popisa?",
-    "confirmremove": "Potvrdili ste uklanjanje",
-    "mantenutolist": "Zadržali ste inventar na popisu",
+    
+    "deleteinv": "Obriši skladište",
+    "deleteinv2": "Želite li ukloniti ovo skladište s popisa?",
+    "confirmremove": "Skladište uklonjeno",
+    "mantenutolist": "Skladište zadržano na popisu",
+    
     "garagemenu": "IZBORNIK GARAŽE",
     "garagemenuritir": "POZICIJA PREUZIMANJA VOZILA",
-    "garagemenuspawn": "POZICIJA SPAWNA / SPREMANJA",
+    "garagemenuspawn": "POZICIJA SPAWNA/SPREMANJA VOZILA",
     "garagemenulist": "POPIS VOZILA",
+    
     "addvehicle": "DODAJ VOZILO",
-    "addvehdesc": "Pritisnite za dodavanje vozila",
-    "label": "OZNAKA",
-    "modelmaiusc": "MODEL VOZILA",
-    "color": "BOJA VOZILA",
-    "fullkit": "PUNI PAKET",
-    "plate": "TABLICE",
+    "addvehdesc": "Dodajte novo vozilo u flotu",
+    
+    "label": "OZNAKA VOZILA",
+    "modelmaiusc": "MODEL VOZILA (spawn ime)",
+    "color": "BOJA VOZILA (RGB)",
+    "fullkit": "POTPUNI PAKET NADOGRADNJI",
+    "plate": "REGISTARSKE TABLICE",
+    
     "deleteveh": "Obriši vozilo",
     "deleteveh2": "Želite li ukloniti ovo vozilo s popisa?",
-    "deleteveh3": "Zadržali ste vozilo na popisu",
+    "deleteveh3": "Vozilo zadržano na popisu",
+    
     "addgrade": "Dodaj rang",
-    "gradedesc": "Pritisnite za dodavanje ranga",
+    "gradedesc": "Dodajte novi rang posla",
+    
     "deletegrade": "Obriši rang",
     "gradeconfirm": "Želite li ukloniti ovaj rang s popisa?",
-    "tenggrado": "Zadržali ste rang na popisu",
-    "putname": "UNESI NAZIVE",
-    "namegrade": "ime (malim slovima)",
-    "labelgrade": "OZNAKA (ESX.PlayerData.grade.label)",
-    "salary": "PLAĆA",
-    "vehiclenotavaible": "VOZILA NISU DOSTUPNA",
-    "garagetitle": "GARAŽA",
+    "tenggrado": "Rang zadržan na popisu",
+    
+    "putname": "UNESI DETALJE RANGA",
+    "namegrade": "ime (malim slovima, bez razmaka)",
+    "labelgrade": "Oznaka (prikazano ime)",
+    "salary": "PLAĆA ($)",
+    
+    "vehiclenotavaible": "NEMA DOSTUPNIH VOZILA",
+    "garagetitle": "GARAŽA POSLA",
     "placeoccupat": "Spawn pozicija je zauzeta",
-    "vehdeposited": "Vozilo je uspješno spremljeno",
+    "vehdeposited": "Vozilo uspješno spremljeno",
     "notveh": "Niste u vozilu",
-    "gradobass": "Vaš rang je prenizak, obratite se nadređenom!",
+    "gradobasso": "Vaš rang je prenizak - obratite se nadređenom!",
+    
     "textuibossmenu": "BOSS IZBORNIK",
     "textuideposito": "SKLADIŠTE",
     "textuiwardrobe": "GARDEROBA",
     "texuigarage1": "PREUZMI VOZILO",
     "texuigarage2": "SPREMI VOZILO",
-    "noperms": "Nemate dovoljno dopuštenja"
+    
+    "noperms": "Nemate dopuštenje za ovu radnju",
+    "vehspawned": "Vozilo uspješno spawnirano!",
+    "invalidmodel": "Neispravan model vozila!",
+    "vehaddedsuccessfully": "Vozilo uspješno dodano!",
+    "wardrobeopened": "Garderoba otvorena",
+    "bossmenuopened": "Boss izbornik otvoren"
 }
