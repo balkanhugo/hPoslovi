@@ -1,4 +1,4 @@
-lib.locale()
+lib.locale(Config.Locale)
 
 -- Helper function for debug logging
 local function DebugLog(message)
