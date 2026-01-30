@@ -42,7 +42,7 @@ Config.IfNotGrades =  {
     { grade = 2, name = 'desna_ruka', label = 'Desna Ruka', salary = '0' },
     { grade = 3, name = 'zamjenik', label = 'Zamjenik Bossa', salary = '0' },
     { grade = 4, name = 'boss', label = 'Boss', salary = '0' },
-},
+}
 
 -- Commands
 Config.CreateCommand = 'makejob'
@@ -102,3 +102,4 @@ end
 Notify = function(msg)
     ESX.ShowNotification(msg)
 end
+
