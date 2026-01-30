@@ -103,10 +103,12 @@ AddEventHandler("esx:setJob2", function (job)
     CurrentJob2 = job
 end)
 
+-- FIXED: Changed grade check from == to >=
 local function HasJob(data)
     local hasJob = false
     if type(data.job) == "table" then
         for i = 1, #data.job, 1 do
+            -- Changed to >= so higher grades can also access
             if 
             data.job[i] == CurrentJob.name and CurrentJob.grade >= data.grade
             or 
@@ -116,6 +118,7 @@ local function HasJob(data)
             end
         end
     elseif type(data.job) == "string" then 
+        -- Changed to >= so higher grades can also access
         if
         data.job == CurrentJob.name and CurrentJob.grade >= data.grade
         or
@@ -229,7 +232,6 @@ local unregisterMarker = function (name)
             if not success then
                 print("Error during marker removal:", error_message)
             end
-            print(name)
         end
         zoneRegistered[name] = nil
     else
