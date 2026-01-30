@@ -4,7 +4,7 @@ Config = {}
 -- DEBUG & LOCALE SETTINGS
 -- ===========================================
 Config.Debug = false -- Set to true to enable debug console logs
-Config.Locale = 'hr' -- Available: 'en', 'hr'
+Config.Locale = 'en' -- Available: 'en', 'hr'
 
 -- ===========================================
 -- MENU SETTINGS
@@ -36,12 +36,11 @@ Config.Vehicle2Marker = false
 -- ===========================================
 
 -- Default grades if not configured
-Config.IfNotGrades =  {
-    { grade = 0, name = 'pocetnik', label = 'Pocetnik', salary = '0' },
-    { grade = 1, name = 'diler', label = 'Diler', salary = '0' },
-    { grade = 2, name = 'desna_ruka', label = 'Desna Ruka', salary = '0' },
-    { grade = 3, name = 'zamjenik', label = 'Zamjenik Bossa', salary = '0' },
-    { grade = 4, name = 'boss', label = 'Boss', salary = '0' },
+Config.IfNotGrades = {
+    { grade = 0, name = 'recruit', label = 'Recruit', salary = '0' },
+    { grade = 1, name = 'employee', label = 'Employee', salary = '0' },
+    { grade = 2, name = 'manager', label = 'Manager', salary = '0' },
+    { grade = 3, name = 'boss', label = 'Boss', salary = '0' },
 }
 
 -- Commands
@@ -53,7 +52,7 @@ Config.AutoSetJob = true
 
 -- Admin groups that can use job creation/editing
 Config.AdminGroups = {
-    'jaankeza',
+    'admin',
     'developer'
 }
 
@@ -102,4 +101,5 @@ end
 Notify = function(msg)
     ESX.ShowNotification(msg)
 end
+
 
