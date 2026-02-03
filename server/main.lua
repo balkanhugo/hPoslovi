@@ -1,6 +1,5 @@
 -- ========================================
--- hPoslovi Server - V1.0 Release
--- ESX Society + Illenium Appearance Only
+-- hPoslovi Server
 -- ========================================
 
 local jobOutfits = {}
@@ -15,6 +14,8 @@ end
 -- ========================================
 -- INITIALIZATION
 -- ========================================
+
+lib.versionCheck('balkanhugo/hPoslovi')
 
 CreateThread(function()
     Wait(1000)
