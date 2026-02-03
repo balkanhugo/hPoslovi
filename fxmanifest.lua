@@ -1,8 +1,8 @@
 fx_version 'cerulean'
 game 'gta5'
 description 'original script by nxs-dev'
-author 'chiaroscuric with Claude'
-version '1.0.0'
+author 'vibe coded by Chiaroscuric'
+version '1.0.1'
 
 client_scripts {
     '@ox_lib/init.lua',
@@ -25,3 +25,4 @@ files {
     'locales/*.json'
 
 }
+
